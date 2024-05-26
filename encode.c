@@ -109,30 +109,55 @@ void pack_and_write(FILE *file, uint8_t *data, size_t size, int bit_size) {
     }
 }
 
-// Function to write compressed data to a file
-void write_compressed_file(const char *filename, int16_t *data, int num_samples, int bit_size) {
-    Vector16 samples;
-    UVector8 d64_data;
-    UVector8 dr_data;
+
+void compress(int16_t *data, Vector16 *samples, UVector8 *d64_data, UVector8 *dr_data, int num_samples, int bit_size) {
+    init_vector16(samples, num_samples);
+    init_uvector8(d64_data, num_samples);
+    init_uvector8(dr_data, num_samples);
     int pow2 = 1 << (bit_size - 1);
-
-    init_vector16(&samples, 4096);
-    init_uvector8(&d64_data, 100000);
-    init_uvector8(&dr_data, 100000);
-
-    samples.data[samples.size++] = data[0];
+    samples->data[samples->size++] = data[0];
 
     for (int i = 1; i < num_samples; ++i) {
         int diff = data[i] - data[i - 1];
         int d64 = round(1.0 * diff / 64);
         if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
-            d64_data.data[d64_data.size++] = (uint8_t)(d64 + pow2); // Shift to 0-31 range
-            dr_data.data[dr_data.size++] = (uint8_t)(diff - d64 * 64 + 1); // Store remainder as 0/1/2
+            d64_data->data[d64_data->size++] = (uint8_t)(d64 + pow2); // Shift to 0-31 range
+            dr_data->data[dr_data->size++] = (uint8_t)(diff - d64 * 64 + 1); // Store remainder as 0/1/2
         } else {
-            dr_data.data[dr_data.size++] = 3; // Use 3 to indicate a new anchor
-            samples.data[samples.size++] = data[i];
+            dr_data->data[dr_data->size++] = 3; // Use 3 to indicate a new anchor
+            samples->data[samples->size++] = data[i];
         }
     }
+    return;
+}
+
+
+// Function to write compressed data to a file
+void write_compressed_file(const char *filename, int16_t *data, int num_samples) {
+    Vector16 samples, samples2;
+    UVector8 d64_data, d64_data2;
+    UVector8 dr_data, dr_data2;
+    // int pow2 = 1 << (bit_size - 1);
+
+    // init_vector16(&samples, num_samples);
+    // init_uvector8(&d64_data, num_samples);
+    // init_uvector8(&dr_data, num_samples);
+
+    // samples.data[samples.size++] = data[0];
+
+    // for (int i = 1; i < num_samples; ++i) {
+    //     int diff = data[i] - data[i - 1];
+    //     int d64 = round(1.0 * diff / 64);
+    //     if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
+    //         d64_data.data[d64_data.size++] = (uint8_t)(d64 + pow2); // Shift to 0-31 range
+    //         dr_data.data[dr_data.size++] = (uint8_t)(diff - d64 * 64 + 1); // Store remainder as 0/1/2
+    //     } else {
+    //         dr_data.data[dr_data.size++] = 3; // Use 3 to indicate a new anchor
+    //         samples.data[samples.size++] = data[i];
+    //     }
+    // }
+    compress(data, &samples, &d64_data, &dr_data, num_samples, 4);
+    compress(samples.data, &samples2, &d64_data2, &dr_data2, samples.size, 6);
 
     FILE *file = fopen(filename, "wb");
     if (!file) {
@@ -141,7 +166,10 @@ void write_compressed_file(const char *filename, int16_t *data, int num_samples,
     }
 
     // Write sizes of arrays
-    fwrite(&samples.size, sizeof(size_t), 1, file);
+    fwrite(&samples2.size, sizeof(size_t), 1, file);
+    fwrite(&d64_data2.size, sizeof(size_t), 1, file);
+    fwrite(&dr_data2.size, sizeof(size_t), 1, file);
+    //fwrite(&samples.size, sizeof(size_t), 1, file);
     fwrite(&d64_data.size, sizeof(size_t), 1, file);
     fwrite(&dr_data.size, sizeof(size_t), 1, file);
 
@@ -168,13 +196,21 @@ void write_compressed_file(const char *filename, int16_t *data, int num_samples,
     // }
 
     // Write anchors
-    fwrite(samples.data, sizeof(int16_t), samples.size, file);
+    //fwrite(samples.data, sizeof(int16_t), samples.size, file);
+    fwrite(samples2.data, sizeof(int16_t), samples2.size, file);
+    // Pack and write 6-bit d64_data2
+    pack_and_write(file, d64_data2.data, d64_data2.size, 6);
 
-    // Pack and write 5-bit d64_data
-    pack_and_write(file, d64_data.data, d64_data.size, 5);
+    // Pack and write 2-bit dr_data2
+    pack_and_write(file, dr_data2.data, dr_data2.size, 2);
+
+    // Pack and write 4-bit d64_data
+    pack_and_write(file, d64_data.data, d64_data.size, 4);
 
     // Pack and write 2-bit dr_data
     pack_and_write(file, dr_data.data, dr_data.size, 2);
+
+
 
     fclose(file);
 
@@ -182,6 +218,9 @@ void write_compressed_file(const char *filename, int16_t *data, int num_samples,
     free(samples.data);
     free(d64_data.data);
     free(dr_data.data);
+    free(samples2.data);
+    free(d64_data2.data);
+    free(dr_data2.data);
 }
 
 
@@ -200,7 +239,7 @@ int main(int argc, char *argv[]) {
     //     }
     //     printf("\n");
     // }
-    write_compressed_file(argv[2], data, num_samples, 5);
+    write_compressed_file(argv[2], data, num_samples);
 
     free(data);
     return 0;
