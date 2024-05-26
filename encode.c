@@ -38,7 +38,7 @@ typedef struct {
     uint8_t *data;
 } UVector8;
 
-int16_t *read_wav_file(const char *filename, WAVHeader *header, int *n) {
+int16_t *read_wav_file(const char *filename, WAVHeader *header, size_t *num_samples) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
         printf("Failed to open file '%s'\n", filename);
@@ -48,47 +48,37 @@ int16_t *read_wav_file(const char *filename, WAVHeader *header, int *n) {
     //WAVHeader header;
     fread(header, sizeof(WAVHeader), 1, file);
 
-    // printf("Sample rate: %d\n", header->sampleRate);
-    // printf("Channels: %d\n", header->numChannels);
-    // printf("Bits per sample: %d\n", header->bitsPerSample);
-    // printf("Data size: %d\n", header->subchunk2Size);
-
-    int num_samples = header->subchunk2Size / (header->bitsPerSample / 8);
-    *n = num_samples;
-    int16_t *data = (int16_t *) malloc(num_samples * sizeof(int16_t));
+    *num_samples = header->subchunk2Size / (header->bitsPerSample / 8);
+    int16_t *data = (int16_t *) malloc((*num_samples) * sizeof(int16_t));
     if (!data) {
         printf("Failed to allocate memory\n");
         fclose(file);
         exit(1);
     }
 
-    fread(data, header->bitsPerSample / 8, num_samples, file);
+    fread(data, header->bitsPerSample / 8, *num_samples, file);
     fclose(file);
     return data;
 }
 
-// Function to initialize a Vector16
 void init_vector16(Vector16 *vec, size_t capacity) {
     vec->data = (int16_t *)malloc(sizeof(int16_t) * capacity);
     vec->size = 0;
     vec->capacity = capacity;
 }
 
-// Function to initialize a Vector8
 void init_vector8(Vector8 *vec, size_t capacity) {
     vec->data = (int8_t *)malloc(sizeof(int8_t) * capacity);
     vec->size = 0;
     vec->capacity = capacity;
 }
 
-// Function to initialize a Vector8
 void init_uvector8(UVector8 *vec, size_t capacity) {
     vec->data = (uint8_t *)malloc(sizeof(uint8_t) * capacity);
     vec->size = 0;
     vec->capacity = capacity;
 }
 
-// Function to pack bits and write to file
 void pack_and_write(FILE *file, uint8_t *data, size_t size, int bit_size) {
     int bit_buffer = 0;
     int bit_count = 0;
@@ -121,10 +111,10 @@ void compress(int16_t *data, Vector16 *samples, UVector8 *d64_data, UVector8 *dr
         int diff = data[i] - data[i - 1];
         int d64 = round(1.0 * diff / 64);
         if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
-            d64_data->data[d64_data->size++] = (uint8_t)(d64 + pow2); // Shift to 0-31 range
-            dr_data->data[dr_data->size++] = (uint8_t)(diff - d64 * 64 + 1); // Store remainder as 0/1/2
+            d64_data->data[d64_data->size++] = (uint8_t)(d64 + pow2); // int8_t->uint8_t
+            dr_data->data[dr_data->size++] = (uint8_t)(diff - d64 * 64 + 1); // -1/0/1 -> 0/1/2
         } else {
-            dr_data->data[dr_data->size++] = 3; // Use 3 to indicate a new anchor
+            dr_data->data[dr_data->size++] = 3; // 3 signals end of the mul64 diff chain, new anchor is needed
             samples->data[samples->size++] = data[i];
         }
     }
@@ -137,25 +127,6 @@ void write_compressed_file(const char *filename, int16_t *data, int num_samples)
     Vector16 samples, samples2;
     UVector8 d64_data, d64_data2;
     UVector8 dr_data, dr_data2;
-    // int pow2 = 1 << (bit_size - 1);
-
-    // init_vector16(&samples, num_samples);
-    // init_uvector8(&d64_data, num_samples);
-    // init_uvector8(&dr_data, num_samples);
-
-    // samples.data[samples.size++] = data[0];
-
-    // for (int i = 1; i < num_samples; ++i) {
-    //     int diff = data[i] - data[i - 1];
-    //     int d64 = round(1.0 * diff / 64);
-    //     if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
-    //         d64_data.data[d64_data.size++] = (uint8_t)(d64 + pow2); // Shift to 0-31 range
-    //         dr_data.data[dr_data.size++] = (uint8_t)(diff - d64 * 64 + 1); // Store remainder as 0/1/2
-    //     } else {
-    //         dr_data.data[dr_data.size++] = 3; // Use 3 to indicate a new anchor
-    //         samples.data[samples.size++] = data[i];
-    //     }
-    // }
     compress(data, &samples, &d64_data, &dr_data, num_samples, 4);
     compress(samples.data, &samples2, &d64_data2, &dr_data2, samples.size, 6);
 
@@ -164,57 +135,18 @@ void write_compressed_file(const char *filename, int16_t *data, int num_samples)
         perror("Failed to open file");
         return;
     }
-
-    // Write sizes of arrays
     fwrite(&samples2.size, sizeof(size_t), 1, file);
     fwrite(&d64_data2.size, sizeof(size_t), 1, file);
     fwrite(&dr_data2.size, sizeof(size_t), 1, file);
-    //fwrite(&samples.size, sizeof(size_t), 1, file);
     fwrite(&d64_data.size, sizeof(size_t), 1, file);
     fwrite(&dr_data.size, sizeof(size_t), 1, file);
-
-    // printf("samples:\n");
-    // for (int i = 0; i < 10; ++i) {
-    //     for (int j = 0; j < 10; ++j) {
-    //         printf("%7d ", samples.data[i * 10 + j]);
-    //     }
-    //     printf("\n");
-    // }
-    // printf("d64:\n");
-    // for (int i = 0; i < 10; ++i) {
-    //     for (int j = 0; j < 10; ++j) {
-    //         printf("%7d ", d64_data.data[i * 10 + j]);
-    //     }
-    //     printf("\n");
-    // }
-    // printf("dr:\n");
-    // for (int i = 0; i < 10; ++i) {
-    //     for (int j = 0; j < 10; ++j) {
-    //         printf("%7d ", dr_data.data[i * 10 + j]);
-    //     }
-    //     printf("\n");
-    // }
-
-    // Write anchors
-    //fwrite(samples.data, sizeof(int16_t), samples.size, file);
     fwrite(samples2.data, sizeof(int16_t), samples2.size, file);
-    // Pack and write 6-bit d64_data2
     pack_and_write(file, d64_data2.data, d64_data2.size, 6);
-
-    // Pack and write 2-bit dr_data2
     pack_and_write(file, dr_data2.data, dr_data2.size, 2);
-
-    // Pack and write 4-bit d64_data
     pack_and_write(file, d64_data.data, d64_data.size, 4);
-
-    // Pack and write 2-bit dr_data
     pack_and_write(file, dr_data.data, dr_data.size, 2);
-
-
-
     fclose(file);
 
-    // Clean up
     free(samples.data);
     free(d64_data.data);
     free(dr_data.data);
@@ -230,15 +162,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     WAVHeader header;
-    int num_samples;
+    size_t num_samples;
 
     int16_t *data = read_wav_file(argv[1], &header, &num_samples);
-    // for (int i = 0; i < 10; ++i) {
-    //     for (int j = 0; j < 10; ++j) {
-    //         printf("%7d ", data[i * 10 + j]);
-    //     }
-    //     printf("\n");
-    // }
     write_compressed_file(argv[2], data, num_samples);
 
     free(data);
