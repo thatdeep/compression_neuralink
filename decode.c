@@ -41,15 +41,15 @@ typedef struct {
 void unpack_bits(FILE *file, uint8_t *data, size_t size, int bit_size) {
     int bit_buffer = 0;
     int bit_count = 0;
-    int byte;
+    uint8_t byte;
 
     for (size_t i = 0; i < size; ++i) {
         while (bit_count < bit_size) {
             byte = fgetc(file);
-            if (byte == EOF) {
-                fprintf(stderr, "Unexpected end of file.\n");
-                exit(EXIT_FAILURE);
-            }
+            // if (byte == EOF) {
+            //     fprintf(stderr, "Unexpected end of file.\n");
+            //     exit(EXIT_FAILURE);
+            // }
             bit_buffer = (bit_buffer << 8) | (byte & 0xFF);
             bit_count += 8;
         }
