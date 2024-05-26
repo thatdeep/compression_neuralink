@@ -77,7 +77,7 @@ int16_t *decompress(Vector16 *samples, UVector8 *d64_data, UVector8 *dr_data, in
         } else {
             int d64 = d64_data->data[d64_index++] - pow2;
             int remainder = dr_data->data[dr_index++] - 1;
-            output_data[i] = output_data[i - 1] + (d64 * 64) + remainder;
+            output_data[i] = (int16_t)((int)output_data[i - 1] + (d64 * 64) + remainder);
         }
     }
     return output_data;
