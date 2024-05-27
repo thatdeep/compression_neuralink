@@ -21,3 +21,14 @@ Notes: same as previous experiment, to squeeze all juice from that approach for 
 
 
 Side notes: frequency-based encoding (like huffmann codes) for sure will improve performance of compressing diffs. As a start, even picking top-n where n = 2^k for k-bit coding will do good and on par with huffmann for evenly spreaded frequencies. Ah, and I finally noticed that data is actually 10-bit so its free compression where we just code our 16-bit samples/anchors with 10-bit and save translation table (1024 entries overhead in worst case, most cases have much less and dont forget anchors usually are much subset of all samples).
+
+2. Time to quantize samples 16 -> 10 bit. I employed following simple strategy: reinterpret int16_t samples as uint16_t, add 32768 to obtain same values but shifted. diffs and all diff logic will be the same, at decoding I unshift and reinterpret back those samples to obtain original ones. Then, for a particular .wav I count and remember unique samples, estimate how much bits will be enough to store them (log2 of least power of two that is greater than number of uniques), store unique values in compressed file as well as their low-bit representation.
+
+experiment 2.1:
+Process: use experiment 1.2, add samples/anchors encoding part.
+
+Result: 2.31 -> 2.34 lossless on eval.sh
+
+Notes: well, expected more from it, but I guess its ok as most samples on average are already encoded with low-bit representations. Expect better improvement with adjustable 64 multipliers selection, thats for sure inefficient.
+
+
