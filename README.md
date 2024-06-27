@@ -31,4 +31,13 @@ Result: 2.31 -> 2.34 lossless on eval.sh
 
 Notes: well, expected more from it, but I guess its ok as most samples on average are already encoded with low-bit representations. Expect better improvement with adjustable 64 multipliers selection, thats for sure inefficient.
 
+experiment 2.2:
+Process: use expetiment 1.1 with different low-bit multiplier coding, add samples/anchors encoding part.
+
+Result: 4 bit multiplier coding: 2.35 lossless on eval.sh, 5-bit multiplier coding: 2.2 -> 2.25 lossless on eval.sh, 6-bit multiplier coding: 1.99 lossless on eval.sh
+
+Notes: well, I got only marginal improvements here. Next, simple frequency-base fixed-bitsize coding then I'll think about implementing something like variable bitsize encoding.
+
+3. 
+
 

@@ -7,6 +7,7 @@
 #define RSMALL (R + 1)
 #define L (1 << R)
 #define SPREADSTEP ((L * 5 / 8) + 3)
+#define BUFSIZE 1000000
 
 typedef struct {
     uint32_t new_x;
@@ -22,6 +23,7 @@ static uint8_t nb[ASIZE];
 static int32_t start[ASIZE];
 static uint32_t encoding_table[L];
 static tableEntry decoding_table[L];
+static uint8_t memory_buffer[BUFSIZE];
 
 
 typedef struct {
@@ -31,6 +33,26 @@ typedef struct {
     size_t total_bitsize;
     FILE *stream;
 } bitStream;
+
+
+void print_uint64_t(uint64_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & ((uint64_t)1 << i)) == ((uint64_t)1 << i)) ? 1 : 0);
+    }
+}
+
+void print_uint32_t(uint32_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & ((uint32_t)1 << i)) == ((uint32_t)1 << i)) ? 1 : 0);
+    }
+}
+
+void print_uint8_t(uint8_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & (1 << i)) == (1 << i)) ? 1 : 0);
+    }
+}
+
 
 void initialize_bitstream(bitStream *bs, FILE *stream, size_t total_bitsize) {
     bs->bit_buffer = 0;
@@ -50,11 +72,14 @@ void flush_buffer_bitstream(bitStream *bs) {
     }
 }
 
+
+// bits input:  last bits -> [{zero_padding}{higher}...{lower}] <- first bits
 void write_bits_bitstream(bitStream *bs, uint32_t bits, int n) {
     if (bs->bits_in_buffer + n > 64) {
         flush_buffer_bitstream(bs);
     }
     // CHECK IF BITS NEED TO BE TRIMMED VIA MASK TO EXACT N BITS
+    bits = (bits & (((uint32_t)1 << n) - 1));
     bs->bit_buffer |= ((uint64_t)bits << bs->bits_in_buffer);
     bs->bits_in_buffer += n;
 }
@@ -71,21 +96,50 @@ void finalize_bitstream(bitStream *bs) {
 
 
 void fill_buffer_bitstream(bitStream *bs) {
+    // printf("inside fill_buffer_bitstream:\n");
+    // printf("bit_buffer:\n");
+    // print_uint64_t(bs->bit_buffer, 64);
+    // printf("\n");
     size_t total_bytesize = (bs->total_bitsize % 8 == 0) ? (bs->total_bitsize / 8) : (bs->total_bitsize / 8 + 1);
     while ((bs->bits_in_buffer <= 56) && (bs->current_bytesize < total_bytesize)) {
+        uint64_t next_uint64_t = 0;
         uint8_t next_byte = fgetc(bs->stream);
-        if (next_byte == (uint8_t)EOF) break;
-        bs->bit_buffer |= (uint64_t)next_byte << bs->bits_in_buffer;
+        next_uint64_t |= (next_byte & 0xFF);
+        //if (next_byte == (uint8_t)EOF) break;
+        // printf("wtf next byte uint64?\n");
+        // printf("%llu\n", next_uint64_t);
+        // print_uint64_t(next_uint64_t, 64);
+        // printf("\n");
+        // print_uint64_t((next_uint64_t << bs->bits_in_buffer), 64);
+        // printf("\n");
+        bs->bit_buffer |= ((uint64_t)next_byte << bs->bits_in_buffer);
         bs->bits_in_buffer += 8;
         bs->current_bytesize++;
+        // printf("after reading byte:\n");
+        // printf("bits in buffer: %lu\n", bs->bits_in_buffer);
+        // printf("byte:\n");
+        // print_uint8_t(next_byte, 8);
+        // printf("\n");
+        // printf("bit_buffer:\n");
+        // print_uint64_t(bs->bit_buffer, 64);
+        // printf("\n");
     }
+    // printf("exiting fill_buffer_bitstream\n");
 }
 
 uint32_t read_bits_bitstream(bitStream *bs, int n) {
+    // printf("inside read_bits_bitstream\n");
+    // printf("bit_buffer:\n");
+    // print_uint64_t(bs->bit_buffer, 64);
+    // printf("\n");
     if (bs->bits_in_buffer < n) fill_buffer_bitstream(bs);
-    uint32_t result = bs->bit_buffer & ((1 << n) - 1);
+    uint32_t result = (uint32_t)(bs->bit_buffer & (uint64_t)((1 << n) - 1));
     bs->bit_buffer >>= n;
     bs->bits_in_buffer -= n;
+    // printf("bit_buffer:\n");
+    // print_uint64_t(bs->bit_buffer, 64);
+    // printf("\n");
+    // printf("exiting read_bits_bitstream\n");
     return result;
 }
 
@@ -115,11 +169,13 @@ void flush_buffer_memstream(memStream *ms) {
     }
 }
 
+// bits input:  last bits -> [{zero_padding}{higher}...{lower}] <- first bits
 void write_bits_memstream(memStream *ms, uint32_t bits, int n) {
     if (ms->bits_in_buffer + n > 64) {
         flush_buffer_memstream(ms);
     }
     // CHECK IF BITS NEED TO BE TRIMMED VIA MASK TO EXACT N BITS
+    bits = (bits & (((uint32_t)1 << n) - 1));
     ms->bit_buffer |= ((uint64_t)bits << ms->bits_in_buffer);
     ms->bits_in_buffer += n;
 }
@@ -133,19 +189,22 @@ void finalize_memstream(memStream *ms) {
 
 
 void reverse_bits_memstream(memStream *ms) {
-    // read_bits  [0...0{read_bits}{old_bits}]<-[to_be_read]<-[...]<-[...]<-...<-[...]
-    // write_bits [0...0{new_bits}{old_bits}] => [...]->[...]->...->[...], no reverse of bits here
-    // so byteas are reversed already, just
-    // have         : [0:xyzuv012][1:01234567][2:01234567]...[8:01234567][9:01234567]
-    // revert bytes : [9:01234567][8:01234567]...[2:01234567][1:01234567][0:012xyzuv]
-    // revert bits  : [9:76543210][8:76543210]...[2:76543210][1:76543210][0:vuzyx210]
-    // shift garbage: [9:21076543][8:21076543]...[2:21076543][1:21076543][0:21000000]
+    // have         : [0:7|0:6|0:5|0:4|0:3|0:2|0:1|0:0][1:7|1:6|1:5|1:4|1:3|1:2|1:1|1:0]...[n:v|n:u|n:z|n:y|n:x|n:2|n:1|n:0]
+    // revert bytes : [n:v|n:u|n:z|n:y|n:x|n:2|n:1|n:0]...[1:7|1:6|1:5|1:4|1:3|1:2|1:1|1:0][0:7|0:6|0:5|0:4|0:3|0:2|0:1|0:0]
+    // revert bits  : [n:0|n:1|n:2|n:x|n:y|n:z|n:u|n:v]...[1:0|1:1|1:2|1:3|1:4|1:5|1:6|1:7][0:0|0:1|0:2|0:3|0:4|0:5|0:6|0:7]
+    // PROBABLY WONT NEED DUE TO BEING ABLE TO READ OUT FIRST GARBAGE BITS ON DECODING STAGE.
+    // shift is performed by garbage size to the right, then {or} with high part of next byte (m=n-1, *=zero_padding)
+    // shift garbage: [m:3|m:4|m:5|m:6|m:7|n:0|n:1|n:2]...[0:3|0:4|0:5|0:6|0:7|1:0|1:1|1:2][-:*|-:*|-:*|-:*|-:*|0:0|0:1|0:2]
+    // now bits reads as:
+    // n:2->n:1->n:0->m:7->m:6->...->m:1->m:0->...->1:7->1:6->...->1:2->1:1->1:0->0:7->0:6->...->0:3->0:2->0:1->0:0
+    // revert bytes
     uint8_t temp;
     for (size_t i = 0; i < ms->current_bytesize / 2; ++i) {
         temp = ms->stream[i];
         ms->stream[i] = ms->stream[ms->current_bytesize - i - 1];
         ms->stream[ms->current_bytesize - i - 1] = temp;
     }
+    // revert bits
     for (size_t i = 0; i < ms->current_bytesize; ++i) {
         temp = ms->stream[i];
         temp = (temp & 0xF0) >> 4 | (temp & 0x0F) << 4;
@@ -153,14 +212,17 @@ void reverse_bits_memstream(memStream *ms) {
         temp = (temp & 0xAA) >> 1 | (temp & 0x55) << 1;
         ms->stream[i] = temp;
     }
-    if (ms->total_bitsize % 8 != 0) {
-        uint8_t shift_size = 8 - (ms->total_bitsize % 8);
-        for (size_t i = 1; i < ms->current_bytesize - 1; ++i) {
-            ms->stream[i - 1] <<= shift_size;
-            ms->stream[i - 1] |= (ms->stream[i] >> (8 - shift_size));
-        }
-        ms->stream[ms->current_bytesize - 1] <<= shift_size;
-    }
+    // shift garbage (DO WE NEED THIS. Let me explain, we know that garbage bits are simply first k bits, just read them as usual, then
+    // read useful bits)
+    // see, we write bitsize so amount of garbage bits should be known when reading starts.
+    // if (ms->total_bitsize % 8 != 0) {
+    //     uint8_t shift_size = 8 - (ms->total_bitsize % 8);
+    //     for (size_t i = 1; i < ms->current_bytesize - 1; ++i) {
+    //         ms->stream[i - 1] <<= shift_size;
+    //         ms->stream[i - 1] |= (ms->stream[i] >> (8 - shift_size));
+    //     }
+    //     ms->stream[ms->current_bytesize - 1] <<= shift_size;
+    // }
 /*
     0xFF
     0b11111111
@@ -205,7 +267,7 @@ void reverse_bits_memstream(memStream *ms) {
     E 1110
     F 1111
 */
-
+    return;
 }
 
 
@@ -225,7 +287,6 @@ uint32_t read_bits_memstream(memStream *ms, int n) {
     ms->bits_in_buffer -= n;
     return result;
 }
-
 
 
 unsigned int nextPowerOf2(uint32_t n) {
@@ -257,7 +318,7 @@ uint8_t logfloor(uint32_t x) {
 }
 
 
-size_t encode(uint8_t *data, size_t dsize) {
+uint32_t encode(uint8_t *data, size_t dsize, memStream *ms) {
     uint8_t nbbits;
     // spread
     uint32_t xind = 0;
@@ -291,15 +352,16 @@ size_t encode(uint8_t *data, size_t dsize) {
         s = data[i];
         nbbits = (x + nb[s]) >> RSMALL;
         // REPLACE WRITEBITS WITH ACTUAL BIT WRITING FUNCTIONALITY
-        //write_bits(x, nbbits);
+        write_bits_memstream(ms, x, nbbits);
         bitsize += nbbits;
         x = encoding_table[start[s] + (x >> nbbits)];
     }
-    return bitsize;
+    ms->total_bitsize = bitsize;
+    return x;
 }
 
 
-uint8_t *decode(size_t dsize, size_t bitsize) {
+uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
     size_t di = 1;
     // spread
@@ -323,11 +385,7 @@ uint8_t *decode(size_t dsize, size_t bitsize) {
         decoding_table[x] = t;
     }
 
-    uint32_t x, xx;
-
-    // TODO read initial state X (read16bits and probably 8 more until we get x from L to 2L - 1?)
-    // or just save number of bits to read
-    xx = x - L;
+    uint32_t xx = x - L;
 
     // decode
     tableEntry t;
@@ -337,6 +395,7 @@ uint8_t *decode(size_t dsize, size_t bitsize) {
         data[di++] = t.symbol;
         // REPLACE READBITS WITH ACTUAL BIT READING FUNCTIONALITY
         //xx = t.new_x + readBits(t.nbbits);
+        xx = t.new_x + read_bits_bitstream(bs, t.nbbits);
         bitsize -= t.nbbits;
     }
     return data;
@@ -344,9 +403,9 @@ uint8_t *decode(size_t dsize, size_t bitsize) {
 
 #define N 15
 
-int main(int argc, char **argv) {
-    int bitsizes[N] = {1, 3, 7, 15, 2, 37, 8, 2, 3, 5, 29, 15, 4, 3, 1};
-    uint32_t bits[N] = {0xF, 0x2, 0x4, 0xA, 0x1, 0xFA, 0x6, 0x1, 0x3, 0x5, 0x1C, 0xB, 0x2, 0x1, 0x0};
+void test_write_read_streams() {
+    int bitsizes[N] = {1, 3, 7, 15, 2, 30, 8, 2, 3, 5, 29, 15, 4, 3, 2};
+    uint32_t bits[N] = {0xF, 0x2, 0x4, 0xA, 0x1, 0xFFA, 0x6, 0x1, 0x3, 0x5, 0x1C, 0xB, 0x2, 0x1, 0x3};
     uint32_t rbits[N] = {0};
     for (int i = 0; i < N; ++i) {
         bits[i] &= ((1 << bitsizes[i]) - 1);
@@ -360,14 +419,32 @@ int main(int argc, char **argv) {
     }
     fwrite(&total_bitsize, sizeof(size_t), 1, file);
     total_bytesize = (total_bitsize % 8 == 0) ? (total_bitsize / 8) : (total_bitsize / 8 + 1);
-    bitStream writing_stream = (bitStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = total_bitsize, .stream=file};
+    memStream writing_stream = (memStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = total_bitsize, .stream=memory_buffer};
     for (int i = 0; i < N; ++i) {
-        write_bits_bitstream(&writing_stream, bits[i], bitsizes[i]);
+        write_bits_memstream(&writing_stream, bits[i], bitsizes[i]);
     }
     printf("w| current_bytesize: %lu, total_bytesize: %lu\n", writing_stream.current_bytesize, total_bytesize);
-    finalize_bitstream(&writing_stream);
+    finalize_memstream(&writing_stream);
     printf("w| current_bytesize: %lu, total_bytesize: %lu\n", writing_stream.current_bytesize, total_bytesize);
-    file = writing_stream.stream;
+    printf("printing writing_stream byte-by-byte:\n");
+    for (int i = 0; i < total_bytesize; ++i) {
+        printf("[");
+        print_uint8_t(writing_stream.stream[i], 8);
+        printf("]");
+        if (i && (i % 10 == 0)) printf("\n");
+    }
+    printf("\n");
+    reverse_bits_memstream(&writing_stream);
+    printf("printing reversed writing_stream byte-by-byte:\n");
+    for (int i = 0; i < total_bytesize; ++i) {
+        printf("[");
+        print_uint8_t(writing_stream.stream[i], 8);
+        printf("]");
+        if (i && (i % 10 == 0)) printf("\n");
+    }
+    printf("\n");
+
+    fwrite(writing_stream.stream, sizeof(uint8_t), total_bytesize, file);
     fclose(file);
 
     file = fopen(filename, "rb");
@@ -376,21 +453,78 @@ int main(int argc, char **argv) {
     read_total_bytesize = (read_total_bitsize % 8 == 0) ? (read_total_bitsize / 8) : (read_total_bitsize / 8 + 1);
     bitStream reading_stream = (bitStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = read_total_bitsize, .stream=file};
 
-    // for (int i = 0; i < N; ++i) {
-    //     rbits[i] = read_bits_bitstream(&reading_stream, bitsizes[i]);
-    // }
-    // what do we need here?
-    // have         : [0:01234567][1:01234567][2:01234567]...[8:01234567][9:012xyzuv]
-    // revert bytes : [9:012xyzuv][8:01234567]...[2:01234567][1:01234567][0:01234567]
-    // revert bits  : [9:vuzyx210][8:76543210]...[2:76543210][1:76543210][0:76543210]
-    // shift garbage: [9:21076543][8:21076543]...[2:21076543][1:21076543][0:21000000]
-    // write to file
-
+    int i = 0;
+    size_t garbage_bitsize = (read_total_bitsize % 8 == 0) ? (0) : (8 - (read_total_bitsize % 8));
+    if (garbage_bitsize) {
+        //print_uint64_t(reading_stream.bit_buffer);
+        printf("reading %lu garbage bits:\n", garbage_bitsize);
+        read_bits_bitstream(&reading_stream, garbage_bitsize);
+        //print_uint64_t(reading_stream.bit_buffer);
+    }
+    while (read_total_bitsize) {
+        //print_uint64_t(reading_stream.bit_buffer);
+        rbits[i] = read_bits_bitstream(&reading_stream, bitsizes[N - i - 1]);
+        printf("reading %d bits at reversed index %d\n", bitsizes[N - i - 1], i);
+        read_total_bitsize -= bitsizes[N - i - 1];
+        i++;
+        //print_uint64_t(reading_stream.bit_buffer);
+    }
 
     printf("r| current_bytesize: %lu, total_bytesize: %lu\n", reading_stream.current_bytesize, read_total_bytesize);
     for (int i = 0; i < N; ++i) {
-        printf("%u --- %u\n", bits[i], rbits[i]);
+        printf("i = %d, b:\n", i);
+        print_uint32_t(bits[i], bitsizes[i]);
+        printf("\nrrb:\n");
+        print_uint32_t(rbits[N - i - 1], bitsizes[i]);
+        //printf("b:%u --- rrb:%u\n", bits[i], rbits[N - i - 1]);
+        printf("\n");
     }
+    fclose(file);
+    return;
+}
+
+int main(int argc, char **argv) {
+    test_write_read_streams();
+    uint8_t alphabet[ASIZE] = {0};
+    for (int i = 0; i < ASIZE; ++i) {
+        alphabet[i] = (uint8_t)i;
+    }
+    for (int i = 0; i < ASIZE; ++i) {
+        occ[i] = (ASIZE + 1 - i);
+    }
+    uint8_t text[20] = {1, 2, 5, 10, 0, 0, 2, 2, 5, 5, 10, 10, 128, 3, 4, 7, 4, 4, 4, 2};
+    size_t dsize = 20;
+    memStream writing_stream = (memStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = 0, .stream=memory_buffer};
+    uint32_t final_state = encode(text, dsize, &writing_stream);
+    finalize_memstream(&writing_stream);
+    reverse_bits_memstream(&writing_stream);
+    size_t total_bytesize = (writing_stream.total_bitsize % 8 == 0) ? (writing_stream.total_bitsize / 8) : (writing_stream.total_bitsize / 8 + 1);
+    char filename[] = "bitstream_testfile.bitstream";
+    FILE *file = fopen(filename, "wb");
+    fwrite(&dsize, sizeof(size_t), 1, file);
+    fwrite(&(writing_stream.total_bitsize), sizeof(size_t), 1, file);
+    fwrite(&final_state, sizeof(uint32_t), 1, file);
+    fwrite(writing_stream.stream, sizeof(uint8_t), total_bytesize, file);
+    fclose(file);
+
+    size_t recovered_text_size = 0;
+    file = fopen(filename, "rb");
+    size_t read_total_bytesize, read_total_bitsize;
+    uint32_t decode_initial_state;
+    fread(&recovered_text_size, sizeof(size_t), 1, file);
+    fread(&read_total_bitsize, sizeof(size_t), 1, file);
+    fread(&decode_initial_state, sizeof(uint32_t), 1, file);
+    bitStream reading_stream = (bitStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = read_total_bitsize, .stream = file};
+    read_total_bytesize = (read_total_bitsize % 8 == 0) ? (read_total_bitsize / 8) : (read_total_bitsize / 8 + 1);
+    size_t garbage_bitsize = (read_total_bitsize % 8 == 0) ? (0) : (8 - (read_total_bitsize % 8));
+    if (garbage_bitsize) {
+        read_bits_bitstream(&reading_stream, garbage_bitsize);
+    }
+    uint8_t *recovered_text = decode(recovered_text_size, read_total_bitsize, decode_initial_state, &reading_stream);
+    for (int i = 0; i < recovered_text_size; ++i) {
+        printf("%d --- %d\n", text[i], recovered_text[i]);
+    }
+    free(recovered_text);
     return 0;
 }
 
