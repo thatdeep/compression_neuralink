@@ -9,17 +9,21 @@
 #define SPREADSTEP ((L * 5 / 8) + 3)
 #define BUFSIZE 1000000
 
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
 typedef struct {
     uint32_t new_x;
     uint8_t symbol;
     uint8_t nbbits;
 } tableEntry;
 
-static uint32_t occ[ASIZE];
-static uint32_t next[ASIZE];
+static int32_t occ[ASIZE];
+static int32_t quant[ASIZE];
+static int32_t next[ASIZE];
 static uint8_t symbol[L];
 static uint8_t kdiff[ASIZE];
-static uint8_t nb[ASIZE];
+static int32_t nb[ASIZE];
 static int32_t start[ASIZE];
 static uint32_t encoding_table[L];
 static tableEntry decoding_table[L];
@@ -212,7 +216,7 @@ void reverse_bits_memstream(memStream *ms) {
         temp = (temp & 0xAA) >> 1 | (temp & 0x55) << 1;
         ms->stream[i] = temp;
     }
-    // shift garbage (DO WE NEED THIS. Let me explain, we know that garbage bits are simply first k bits, just read them as usual, then
+    // shift garbage (DO WE NEED THIS? Let me explain, we know that garbage bits are simply first k bits, just read them as usual, then
     // read useful bits)
     // see, we write bitsize so amount of garbage bits should be known when reading starts.
     // if (ms->total_bitsize % 8 != 0) {
@@ -314,14 +318,19 @@ uint8_t powerOfTwoExponent(uint32_t x) {
 
 
 uint8_t logfloor(uint32_t x) {
-    return powerOfTwoExponent(nextPowerOf2(x) >> 1);
+    uint32_t np2x = nextPowerOf2(x);
+    if (x == np2x) {
+        return powerOfTwoExponent(x);
+    }
+    return powerOfTwoExponent(np2x >> 1);
 }
 
 
 uint32_t encode(uint8_t *data, size_t dsize, memStream *ms) {
     uint8_t nbbits;
     // spread
-    uint32_t xind = 0;
+    printf("encode | spreading...\n");
+    int32_t xind = 0;
     size_t bitsize = 0;
     for (size_t s = 0; s < ASIZE; ++s) {
         for (uint32_t i = 0; i < occ[s]; ++i) {
@@ -329,21 +338,44 @@ uint32_t encode(uint8_t *data, size_t dsize, memStream *ms) {
             xind = (xind + SPREADSTEP) % L;
         }
     }
+    printf("encode | spreading done.\n");
+    printf("encode | preparing...\n");
 
     // prepare
     int sumacc = 0;
     for (size_t s = 0; s < ASIZE; ++s) {
         kdiff[s] = R - logfloor(occ[s]);
         nb[s] = (kdiff[s] << RSMALL) - (occ[s] << kdiff[s]);
-        sumacc -= occ[s];
-        start[s] = sumacc;
+        sumacc += occ[s];
+        start[s] = -occ[s] + sumacc;
         next[s] = occ[s];
+        printf("ggg: kdiff[s] << RSMALL: %d, occ[s] << kdiff[s]: %d\n", (kdiff[s] << RSMALL), (occ[s] << kdiff[s]));
+        printf("s=%lu, occ[%lu]=%d, lf(occ[s])=%d, R-lf(occ[s])=%d, kdiff[%lu]=%d, nb[%lu]=%d, sumacc=%d, start[%lu]=%d, next[%lu]=%d\n", s, s, occ[s], logfloor(occ[s]), R - logfloor(occ[s]),  s, kdiff[s], s, nb[s], sumacc, s, start[s], s, next[s]);
     }
-    size_t s;
-    for (size_t x = L; x < 2 * L; ++x) {
-        s = symbol[x - L];
-        encoding_table[start[s] + (next[s]++)] = x;
+    int s;
+    printf("symbols:\n");
+    for (int i = 0; i < L; ++i) {
+        printf("%3d, ", symbol[i]);
+        if ((i + 1) % 32 == 0) {
+            printf("\n");
+        }
     }
+    printf("\n");
+    printf("encode | preparing encoding table...\n");
+    printf("symbol[0]: %d\n", symbol[0]);
+    printf("start[0]=%d, next[0]=%d, start[0]+next[0]=%d\n", start[0], next[0], start[0] + next[0]);
+    printf("L=%d\n", L);
+    int ll = L;
+    for (int x = ll; x < 2 * ll; ++x) {
+        printf("x=%d, ", x);
+        s = symbol[x - ll];
+        printf("s=%d, ", s);
+        printf(", start[%d]=%d, next[%d]=%d, encoding table index: %u\n",s, start[s], s, next[s], start[s] + (next[s]));
+        encoding_table[start[s] + next[s]] = x;
+        next[s]++;
+    }
+    printf("encode | preparing done.\n");
+    printf("encode | encoding...\n");
 
     // encode
     uint32_t x = 1 + L;
@@ -351,19 +383,33 @@ uint32_t encode(uint8_t *data, size_t dsize, memStream *ms) {
     for (size_t i = 0; i < dsize; ++i) {
         s = data[i];
         nbbits = (x + nb[s]) >> RSMALL;
+        printf("i=%d, x=%d, nb[%d]=%d, (x + nb[s])=%d, nbbits=%d\n", i, x, s, nb[s], (x + nb[s]), (x + nb[s]) >> RSMALL);
         // REPLACE WRITEBITS WITH ACTUAL BIT WRITING FUNCTIONALITY
         write_bits_memstream(ms, x, nbbits);
         bitsize += nbbits;
         x = encoding_table[start[s] + (x >> nbbits)];
     }
+    printf("total_bitsize=%lu\n", bitsize);
     ms->total_bitsize = bitsize;
+    printf("encode | encoding done\n");
+
     return x;
+}
+
+uint32_t reverse_bits_uint32_t(uint32_t x, int nbits) {
+    uint32_t reversed = 0;
+    for (int i = 0; i < nbits; ++i) {
+        if (x & ((uint32_t)1 << i)) {
+            reversed |= (uint32_t)1 << (nbits - i - 1);
+        }
+    }
+    return reversed;
 }
 
 
 uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
-    size_t di = 1;
+    size_t di = 0;
     // spread
     uint32_t xind = 0;
     for (size_t s = 0; s < ASIZE; ++s) {
@@ -389,16 +435,76 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
 
     // decode
     tableEntry t;
-    while (bitsize) {
+    int32_t bss = (int32_t)bitsize;
+    printf("bitsize:%d\n", bss);
+    while (bss > 0) {
+        printf("bitsize:%d\n", bss);
         t = decoding_table[xx];
         //useSymbol(t.symbol);
         data[di++] = t.symbol;
         // REPLACE READBITS WITH ACTUAL BIT READING FUNCTIONALITY
         //xx = t.new_x + readBits(t.nbbits);
-        xx = t.new_x + read_bits_bitstream(bs, t.nbbits);
-        bitsize -= t.nbbits;
+        xx = t.new_x + reverse_bits_uint32_t(read_bits_bitstream(bs, t.nbbits), t.nbbits);
+        bss -= t.nbbits;
     }
     return data;
+}
+
+void quantize_occurences() {
+    int total = 0;
+    int quant_total = 0;
+    int i, difference;
+
+    for (int i = 0; i < ASIZE; ++i) {
+        total += occ[i];
+    }
+
+    // Calculate quantized values
+    for (i = 0; i < ASIZE; i++) {
+        float probability = (float)occ[i] / total;
+        quant[i] = (int)(probability * L + 0.5); // Round to nearest integer
+        if (quant[i] == 0) quant[i] = 1;
+        printf("prob[%d]=%f, quant[%d]=%d\n", i, probability, i, quant[i]);
+        quant_total += quant[i];
+    }
+
+    // Adjust quant values to sum exactly to QUANT_SIZE
+    difference = L - quant_total;
+    printf("quant_total=%d, difference=%d\n", quant_total, difference);
+
+    while (difference > 0) {
+        for (i = 0; i < ASIZE && difference > 0; i++) {
+            if (quant[i] < (int)((float)occ[i] / total * L + 0.5)) {
+                quant[i]++;
+                difference--;
+            }
+        }
+    }
+    printf("kek\n");
+
+    while (difference < 0) {
+        for (i = 0; i < ASIZE && difference < 0; i++) {
+            if (quant[i] > 1) {
+                quant[i]--;
+                difference++;
+            }
+        }
+    }
+
+    int quant_sum = 0;
+    for (int i = 0; i < ASIZE; ++i) {
+        quant_sum += quant[i];
+    }
+    printf("quant_sum: %d\n", quant_sum);
+
+    // Output results
+    for (i = 0; i < ASIZE; i++) {
+        occ[i] = quant[i];
+        printf("Symbol %d: Quantized value = %d\n", i, quant[i]);
+    }
+
+
+    return;
 }
 
 #define N 15
@@ -490,13 +596,16 @@ int main(int argc, char **argv) {
         alphabet[i] = (uint8_t)i;
     }
     for (int i = 0; i < ASIZE; ++i) {
-        occ[i] = (ASIZE + 1 - i);
+        occ[i] = (ASIZE - i);
     }
+    quantize_occurences();
     uint8_t text[20] = {1, 2, 5, 10, 0, 0, 2, 2, 5, 5, 10, 10, 128, 3, 4, 7, 4, 4, 4, 2};
     size_t dsize = 20;
     memStream writing_stream = (memStream){.bit_buffer = 0, .bits_in_buffer = 0, .current_bytesize = 0, .total_bitsize = 0, .stream=memory_buffer};
     uint32_t final_state = encode(text, dsize, &writing_stream);
+    printf("final state: %u\n", final_state);
     finalize_memstream(&writing_stream);
+    printf("memstream finalized.\n");
     reverse_bits_memstream(&writing_stream);
     size_t total_bytesize = (writing_stream.total_bitsize % 8 == 0) ? (writing_stream.total_bitsize / 8) : (writing_stream.total_bitsize / 8 + 1);
     char filename[] = "bitstream_testfile.bitstream";
@@ -518,11 +627,12 @@ int main(int argc, char **argv) {
     read_total_bytesize = (read_total_bitsize % 8 == 0) ? (read_total_bitsize / 8) : (read_total_bitsize / 8 + 1);
     size_t garbage_bitsize = (read_total_bitsize % 8 == 0) ? (0) : (8 - (read_total_bitsize % 8));
     if (garbage_bitsize) {
+        printf("read %d bits of garbage:\n", garbage_bitsize);
         read_bits_bitstream(&reading_stream, garbage_bitsize);
     }
     uint8_t *recovered_text = decode(recovered_text_size, read_total_bitsize, decode_initial_state, &reading_stream);
     for (int i = 0; i < recovered_text_size; ++i) {
-        printf("%d --- %d\n", text[i], recovered_text[i]);
+        printf("%d --- %d\n", text[i], recovered_text[recovered_text_size - i - 1]);
     }
     free(recovered_text);
     return 0;
