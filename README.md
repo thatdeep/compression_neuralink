@@ -32,12 +32,12 @@ Result: 2.31 -> 2.34 lossless on eval.sh
 Notes: well, expected more from it, but I guess its ok as most samples on average are already encoded with low-bit representations. Expect better improvement with adjustable 64 multipliers selection, thats for sure inefficient.
 
 experiment 2.2:
-Process: use expetiment 1.1 with different low-bit multiplier coding, add samples/anchors encoding part.
+Process: use experiment 1.1 with different low-bit multiplier coding, add samples/anchors encoding part.
 
 Result: 4 bit multiplier coding: 2.35 lossless on eval.sh, 5-bit multiplier coding: 2.2 -> 2.25 lossless on eval.sh, 6-bit multiplier coding: 1.99 lossless on eval.sh
 
 Notes: well, I got only marginal improvements here. Next, simple frequency-base fixed-bitsize coding then I'll think about implementing something like variable bitsize encoding.
 
-3. 
+3. Its time to explore frequency-based coding. In terms of alphabet, 256 pairs of (multiple 64, residue) force most of the elements into chains. It leads to an idea of having simple implementation of Asymmetrical Numeric System (tabled tANS version) for a predefined up-to-256-element alphabet. Less anchor elements and less bits per encoded chain element should lead to dramatic filesize reduction.
 
 

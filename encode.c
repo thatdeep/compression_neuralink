@@ -3,7 +3,6 @@
 #include <math.h>
 
 #pragma pack(1) // Ensure no padding
-
 typedef struct {
     char chunkID[4];
     unsigned int chunkSize;
