@@ -102,7 +102,6 @@ void write_bits_memstream(memStream *ms, uint32_t bits, int n) {
     if (ms->bits_in_buffer + n > 64) {
         flush_buffer_memstream(ms);
     }
-    // CHECK IF BITS NEED TO BE TRIMMED VIA MASK TO EXACT N BITS
     bits = (bits & (((uint32_t)1 << n) - 1));
     ms->bit_buffer |= ((uint64_t)bits << ms->bits_in_buffer);
     ms->bits_in_buffer += n;
@@ -491,9 +490,262 @@ void test_tans_algorithm() {
 }
 
 
+#pragma pack(1) // Ensure no padding
+typedef struct {
+    char chunkID[4];
+    unsigned int chunkSize;
+    char format[4];
+    char subchunk1ID[4];
+    unsigned int subchunk1Size;
+    unsigned short audioFormat;
+    unsigned short numChannels;
+    unsigned int sampleRate;
+    unsigned int byteRate;
+    unsigned short blockAlign;
+    unsigned short bitsPerSample;
+    char subchunk2ID[4];
+    unsigned int subchunk2Size;
+} WAVHeader;
+
+typedef struct {
+    size_t size;
+    size_t capacity;
+    int16_t *data;
+} Vector16;
+
+
+typedef struct {
+    size_t size;
+    size_t capacity;
+    uint16_t *data;
+} UVector16;
+
+
+typedef struct {
+    size_t size;
+    size_t capacity;
+    int8_t *data;
+} Vector8;
+
+typedef struct {
+    size_t size;
+    size_t capacity;
+    uint8_t *data;
+} UVector8;
+
+typedef struct {
+     int key;
+     int stack_index;
+} TableEntry;
+
+void push_vector16(Vector16 *vec, int16_t value) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = (vec->size  * 3) / 2;
+        int16_t *new_data = (int16_t *)malloc(sizeof(int16_t) * new_capacity);
+        memcpy(new_data, vec->data, sizeof(int16_t) * vec->size);
+        free(vec->data);
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = value;
+}
+
+void push_uvector16(UVector16 *vec, uint16_t value) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = (vec->size  * 3) / 2;
+        uint16_t *new_data = (uint16_t *)malloc(sizeof(uint16_t) * new_capacity);
+        memcpy(new_data, vec->data, sizeof(uint16_t) * vec->size);
+        free(vec->data);
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = value;
+}
+
+void push_vector8(Vector8 *vec, int8_t value) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = (vec->size  * 3) / 2;
+        int8_t *new_data = (int8_t *)malloc(sizeof(int8_t) * new_capacity);
+        memcpy(new_data, vec->data, sizeof(int8_t) * vec->size);
+        free(vec->data);
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = value;
+}
+
+void push_uvector8(UVector16 *vec, uint8_t value) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = (vec->size  * 3) / 2;
+        uint8_t *new_data = (uint8_t *)malloc(sizeof(uint8_t) * new_capacity);
+        memcpy(new_data, vec->data, sizeof(uint8_t) * vec->size);
+        free(vec->data);
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = value;
+}
+
+
+#define SAMPLE_TABLE_SIZE 4096
+#define SAMPLE_TABLE_EMPTY_KEY -1
+
+static TableEntry sample_table[SAMPLE_TABLE_SIZE];
+static uint16_t sample_stack[SAMPLE_TABLE_SIZE];
+
+
+uint16_t *read_wav_file(const char *filename, WAVHeader *header, size_t *num_samples) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        printf("Failed to open file '%s'\n", filename);
+        exit(1);
+    }
+
+    //WAVHeader header;
+    fread(header, sizeof(WAVHeader), 1, file);
+
+    *num_samples = header->subchunk2Size / (header->bitsPerSample / 8);
+    int16_t *data = (int16_t *) malloc((*num_samples) * sizeof(int16_t));
+    if (!data) {
+        printf("Failed to allocate memory\n");
+        fclose(file);
+        exit(1);
+    }
+
+    fread(data, header->bitsPerSample / 8, *num_samples, file);
+    uint16_t *udata = (uint16_t *)data;
+    for (int i = 0; i < *num_samples; ++i) {
+        udata[i] += 32768;
+    }
+    fclose(file);
+    return udata;
+}
+
+void compress(uint16_t *data, UVector16 *samples, UVector8 *d64_data, UVector8 *dr_data, int num_samples, int bit_size) {
+
+    init_uvector16(samples, num_samples);
+    init_uvector8(d64_data, num_samples);
+    init_uvector8(dr_data, num_samples);
+    int pow2 = 1 << (bit_size - 1);
+    samples->data[samples->size++] = data[0];
+
+    for (int i = 1; i < num_samples; ++i) {
+        int diff = data[i] - data[i - 1];
+        int d64 = round(1.0 * diff / 64);
+        if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
+            d64_data->data[d64_data->size++] = (uint8_t)(d64 + pow2); // int8_t->uint8_t
+            dr_data->data[dr_data->size++] = (uint8_t)(diff - d64 * 64 + 1); // -1/0/1 -> 0/1/2
+        } else {
+            dr_data->data[dr_data->size++] = 3; // 3 signals end of the mul64 diff chain, new anchor is needed
+            samples->data[samples->size++] = data[i];
+        }
+    }
+    return;
+}
+
+typedef struct {
+    uint32_t count;
+    int8_t d64;
+    int8_t res;
+} ChainElemInfo;
+
+int compare_chain_element_infos(const void *a, const void *b) {
+    ChainElemInfo *elemA = (ChainElemInfo *)a;
+    ChainElemInfo *elemB = (ChainElemInfo *)b;
+    return (elemB->count - elemA->count); // Sorting in descending order of counts
+}
+
+static ChainElemInfo chain_table[303];
+static uint8_t chain_elem_to_alphabet[303];
+
+void write_compressed_file(const char *filename, uint16_t *data, int num_samples) {
+    // collect occurences, determine top (255) pairs of (mul64, res) to encode into diffs alphabet.
+    for (int d64 = -50; d64 < 51; ++d64) {
+        for (int res = 0; res < 2; ++res) {
+            ChainElemInfo[(d64 + 50) * 3 + res] = (ChainElemInfo){.count = 0, .d64 = (int8_t)d64, .res = (int8_t)res};
+            chain_elem_to_alphabet[(d64 + 50) * 3 + res] = -1;
+        }
+    }
+    for (int i = 1; i < num_samples; ++i) {
+        int diff = data[i] - data[i - 1];
+        int d64 = round(1.0 * diff / 64);
+        int rem = diff - d64 * 64;
+        if ((abs(d64) <= 50) && (abs(rem) <= 1)) {
+            ChainElemInfo[(d64 + 50) * 3 + res].count++;
+        }
+    }
+    qsort(chain_table, 303, sizeof(ChainElemInfo), compare_chain_element_infos);
+    memset(occ, sizeof(int32_t) * ASIZE, 0);
+    for (int i = 0; i < ASIZE - 1; ++i) { // first symbol states end of chain
+        int d64 = chain_table[i].d64;
+        int res = chain_table[i].res;
+        chain_elem_to_alphabet[(d64 + 50) * 3 + res] = i + 1;
+        occ[i + 1] = chain_table[i].count;
+    }
+    // diffs alphabet encoded, iterate samples and create anchors array as well as coded diffs
+    UVector16 samples = (UVector16){.size=0, .capacity=1024, .data=(uint16_t *)malloc(sizeof(uint16_t) * 1024)};
+    UVector8 diffs = (UVector8){.size=0, .capacity=4096, .data=(uint8_t *)malloc(sizeof(uint8_t) * 4096)};
+    push_uvector16(&samples, data[0]);
+    for (int i = 1; i < num_samples; ++i) {
+        int diff = data[i] - data[i - 1];
+        int d64 = round(1.0 * diff / 64);
+        int rem = diff - d64 * 64;
+        if ((abs(d64) <= 50) && (abs(rem) <= 1)) {
+            if (chain_elem_to_alphabet[(d64 + 50) * 3 + res] != -1) {
+                push_uvector8(&diffs, chain_elem_to_alphabet[(d64 + 50) * 3 + res]);
+            } else {
+                push_uvector8(&diffs, 0);
+                push_uvector16(&samples, data[i]);
+                occ[0]++;
+            }
+        } else {
+            push_uvector8(&diffs, 0);
+            push_uvector16(&samples, data[i]);
+            occ[0]++;
+        }
+    }
+    quantize_occurences(); // honestly, just send serialize quantized occurences, plus we use it at encode
+    vecStream diff_writing_stream = (vecStream){
+        .ms = (memStream){
+            .bit_buffer = 0,
+            .bits_in_buffer = 0,
+            .current_bytesize = 0,
+            .total_bitsize = 0,
+            .stream=(uint8_t *)malloc(sizeof(uint8_t) * 8192)
+        },
+        .stream_capacity = 8192
+    };
+    uint32_t final_state = encode(diffs.data, diffs.size, &diff_writing_stream);
+    printf("final state: %u\n", final_state);
+    finalize_vecstream(&diff_writing_stream);
+    printf("vecstream finalized.\n");
+    reverse_bits_memstream(&(diff_writing_stream.ms));
+    size_t total_bytesize = (diff_writing_stream.ms.total_bitsize % 8 == 0)
+                            ? (diff_writing_stream.ms.total_bitsize / 8)
+                            : (diff_writing_stream.ms.total_bitsize / 8 + 1);
+    FILE *file = fopen(filename, "wb");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+    // what should be packed:
+    
+    return;
+}
+
 int main(int argc, char **argv) {
     test_write_read_streams();
     test_tans_algorithm();
+    if (argc < 3) {
+        printf("Usage: %s <input-wav-file> <compressed-file>\n", argv[0]);
+        return 1;
+    }
+    WAVHeader header;
+    size_t num_samples;
+
+    uint16_t *data = read_wav_file(argv[1], &header, &num_samples);
+    write_compressed_file(argv[2], data, num_samples);
+
     return 0;
 }
 
