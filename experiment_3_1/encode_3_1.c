@@ -574,7 +574,7 @@ void push_vector8(Vector8 *vec, int8_t value) {
     vec->data[vec->size++] = value;
 }
 
-void push_uvector8(UVector16 *vec, uint8_t value) {
+void push_uvector8(UVector8 *vec, uint8_t value) {
     if (vec->size >= vec->capacity) {
         size_t new_capacity = (vec->size  * 3) / 2;
         uint8_t *new_data = (uint8_t *)malloc(sizeof(uint8_t) * new_capacity);
@@ -621,28 +621,6 @@ uint16_t *read_wav_file(const char *filename, WAVHeader *header, size_t *num_sam
     return udata;
 }
 
-void compress(uint16_t *data, UVector16 *samples, UVector8 *d64_data, UVector8 *dr_data, int num_samples, int bit_size) {
-
-    init_uvector16(samples, num_samples);
-    init_uvector8(d64_data, num_samples);
-    init_uvector8(dr_data, num_samples);
-    int pow2 = 1 << (bit_size - 1);
-    samples->data[samples->size++] = data[0];
-
-    for (int i = 1; i < num_samples; ++i) {
-        int diff = data[i] - data[i - 1];
-        int d64 = round(1.0 * diff / 64);
-        if ((d64 >= -pow2) && (d64 < pow2) && (abs(diff - d64 * 64) <= 1)) {
-            d64_data->data[d64_data->size++] = (uint8_t)(d64 + pow2); // int8_t->uint8_t
-            dr_data->data[dr_data->size++] = (uint8_t)(diff - d64 * 64 + 1); // -1/0/1 -> 0/1/2
-        } else {
-            dr_data->data[dr_data->size++] = 3; // 3 signals end of the mul64 diff chain, new anchor is needed
-            samples->data[samples->size++] = data[i];
-        }
-    }
-    return;
-}
-
 typedef struct {
     uint32_t count;
     int8_t d64;
@@ -662,20 +640,20 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     // collect occurences, determine top (255) pairs of (mul64, res) to encode into diffs alphabet.
     for (int d64 = -50; d64 < 51; ++d64) {
         for (int res = 0; res < 2; ++res) {
-            ChainElemInfo[(d64 + 50) * 3 + res] = (ChainElemInfo){.count = 0, .d64 = (int8_t)d64, .res = (int8_t)res};
-            chain_elem_to_alphabet[(d64 + 50) * 3 + res] = -1;
+            chain_table[(d64 + 50) * 3 + res] = (ChainElemInfo){.count = 0, .d64 = (int8_t)d64, .res = (int8_t)res};
+            chain_elem_to_alphabet[(d64 + 50) * 3 + res] = 0;
         }
     }
     for (int i = 1; i < num_samples; ++i) {
         int diff = data[i] - data[i - 1];
         int d64 = round(1.0 * diff / 64);
-        int rem = diff - d64 * 64;
-        if ((abs(d64) <= 50) && (abs(rem) <= 1)) {
-            ChainElemInfo[(d64 + 50) * 3 + res].count++;
+        int res = diff - d64 * 64;
+        if ((abs(d64) <= 50) && (abs(res) <= 1)) {
+            chain_table[(d64 + 50) * 3 + res].count++;
         }
     }
     qsort(chain_table, 303, sizeof(ChainElemInfo), compare_chain_element_infos);
-    memset(occ, sizeof(int32_t) * ASIZE, 0);
+    memset(occ, 0, sizeof(int32_t) * ASIZE);
     for (int i = 0; i < ASIZE - 1; ++i) { // first symbol states end of chain
         int d64 = chain_table[i].d64;
         int res = chain_table[i].res;
@@ -689,9 +667,9 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     for (int i = 1; i < num_samples; ++i) {
         int diff = data[i] - data[i - 1];
         int d64 = round(1.0 * diff / 64);
-        int rem = diff - d64 * 64;
-        if ((abs(d64) <= 50) && (abs(rem) <= 1)) {
-            if (chain_elem_to_alphabet[(d64 + 50) * 3 + res] != -1) {
+        int res = diff - d64 * 64;
+        if ((abs(d64) <= 50) && (abs(res) <= 1)) {
+            if (chain_elem_to_alphabet[(d64 + 50) * 3 + res] != 0) {
                 push_uvector8(&diffs, chain_elem_to_alphabet[(d64 + 50) * 3 + res]);
             } else {
                 push_uvector8(&diffs, 0);
@@ -729,7 +707,41 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
         return;
     }
     // what should be packed:
-    
+    // * encoded diff alphabet:
+    // (TODO: ASIZE when gridsearch arrives, imagine testing different alphabet sizes to see which will get better comp rate)
+    // uint16 quant_occ[ASIZE]
+    // int8 d64[ASIZE - 1] (d64 has no meaning for our END_OF_CHAIN symbol 0)
+    // int8 res[ASIZE - 1] (res has no meaning for our END_OF_CHAIN symbol 1) - can be compressed via vecstream/memstream to 2-bit
+    // * anchors (samples)
+    // size_t samples_size
+    // uint16_t *samples
+    // * coded diffs
+    // size_t bitsize
+    // (optionally number of diffs, but can be deduced at decoding stage after we decode all bitsize bits)
+    // content of reversed diff_writing_stream
+    for (int i = 0; i < ASIZE; ++i) {
+        uint16_t quant_occ_value = (uint16_t)occ[i];
+        // int d64 = chain_table[i].d64;
+        // int res = chain_table[i].res;
+        // chain_elem_to_alphabet[(d64 + 50) * 3 + res] = i + 1;
+        // occ[i + 1] = chain_table[i].count;
+        fwrite(&quant_occ_value, sizeof(uint16_t), 1, file);
+    }
+    for (int i = 1; i < ASIZE; ++i) {
+        fwrite(&(chain_table[i].d64), sizeof(int8_t), 1, file);
+    }
+    for (int i = 1; i < ASIZE; ++i) {
+        fwrite(&(chain_table[i].res), sizeof(int8_t), 1, file);
+    }
+    printf("# of anchor samples: %zu\n", samples.size);
+    printf("# of diff samples: %zu\n", diffs.size);
+    fwrite(&(samples.size), sizeof(size_t), 1, file);
+    fwrite(samples.data, sizeof(uint16_t), samples.size, file);
+    // saving diff would change result to simply choosing top occurence diffs (one of proposed improvements)
+    fwrite(&final_state, sizeof(uint32_t), 1, file);
+    fwrite(&(diff_writing_stream.ms.total_bitsize), sizeof(size_t), 1, file);
+    fwrite(diff_writing_stream.ms.stream, sizeof(uint8_t), total_bytesize, file);
+    fclose(file);
     return;
 }
 
