@@ -40,4 +40,9 @@ Notes: well, I got only marginal improvements here. Next, simple frequency-base 
 
 3. Its time to explore frequency-based coding. In terms of alphabet, 256 pairs of (multiple 64, residue) force most of the elements into chains. It leads to an idea of having simple implementation of Asymmetrical Numeric System (tabled tANS version) for a predefined up-to-256-element alphabet. Less anchor elements and less bits per encoded chain element should lead to dramatic filesize reduction.
 
+experiment 3.1:
+Process: After spending some time debugging, here we are: first of a kind frequency-based entropy coding. Basic tANS algorithm on a table of 255 most frequent diff chain members.
 
+Result: Instantly getting 2.78 lossless compression rate. Algo work good when there are some frequent diffs, worse when all diffs are spreaded uniformly. Shameless files with near-uniform diff frequencies are still here, adding lots of bits.
+
+Notes: 16-bit anchor samples should be reduced to at most 10-bit representations (did this before, can unleash here too to obtain few compression points). Also, there should be some tradeoffs between diff alphabet size, remaining ahcnors. This leads us to try different parameters of tANS algo, pick least bitsize and go with it (like gridsearch over feasible variants of same algorithm on encoding).
