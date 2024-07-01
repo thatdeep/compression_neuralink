@@ -3,7 +3,8 @@
 // #include <stdlib.h>
 // #include <stdint.h>
 // #include <string.h>
-#include <math.h>
+#include "assert.h"
+#include "math.h"
 
 
 #define ASIZE 256
@@ -84,12 +85,12 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs) {
     // spread
     int32_t xind = 0;
     size_t bitsize = 0;
-    printf("occ encode:\n");
-    for (int i = 0; i < ASIZE; ++i) {
-        printf("%4d ", occ[i]);
-        if (i && (i % 16 == 0)) printf("\n");
-    }
-    printf("\n");
+    // printf("occ encode:\n");
+    // for (int i = 0; i < ASIZE; ++i) {
+    //     printf("%4d ", occ[i]);
+    //     if (i && (i % 16 == 0)) printf("\n");
+    // }
+    // printf("\n");
 
     for (size_t s = 0; s < ASIZE; ++s) {
         for (uint32_t i = 0; i < occ[s]; ++i) {
@@ -119,15 +120,15 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs) {
         s = data[i];
         nbbits = (x + nb[s]) >> RSMALL;
         //printf("i=%lu, x=%d, nb[%d]=%d, (x + nb[s])=%d, nbbits=%d\n", i, x, s, nb[s], (x + nb[s]), (x + nb[s]) >> RSMALL);
-        printf("s = %d, x = %u, xx=%u, nbbits=%d\n", s, x, x - L, nbbits);
-        printf("writing %d bits into stream: ", nbbits);
-        print_uint32_t(x, nbbits);
-        printf("\n");
+        //printf("s = %d, x = %u, xx=%u, nbbits=%d\n", s, x, x - L, nbbits);
+        // printf("writing %d bits into stream: ", nbbits);
+        // print_uint32_t(x, nbbits);
+        // printf("\n");
         write_bits_vecstream(vs, x, nbbits);
         bitsize += nbbits;
         x = encoding_table[start[s] + (x >> nbbits)];
     }
-    printf("total encoded bitsize=%lu\n", bitsize);
+    // printf("total encoded bitsize=%lu\n", bitsize);
     vs->ms.total_bitsize = bitsize;
     return x;
 }
@@ -147,18 +148,18 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs) {
     size_t di = 0;
     // spread
     uint32_t xind = 0;
-    printf("occ decode:\n");
-    for (int i = 0; i < ASIZE; ++i) {
-        printf("%4d ", occ[i]);
-        if (i && (i % 16 == 0)) printf("\n");
-    }
-    printf("\n");
+    // printf("occ decode:\n");
+    // for (int i = 0; i < ASIZE; ++i) {
+    //     printf("%4d ", occ[i]);
+    //     if (i && (i % 16 == 0)) printf("\n");
+    // }
+    // printf("\n");
     for (size_t s = 0; s < ASIZE; ++s) {
         for (uint32_t i = 0; i < occ[s]; ++i) {
             symbol[xind] = s;
-            if (symbol[xind] != symbol_backup[xind]) {
-                printf("symbol build differs on xind=%u\n", xind);
-            }
+            // if (symbol[xind] != symbol_backup[xind]) {
+            //     printf("symbol build differs on xind=%u\n", xind);
+            // }
             xind = (xind + SPREADSTEP) % L;
         }
     }
@@ -180,20 +181,23 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs) {
     tableEntry t;
     int32_t bss = (int32_t)bitsize;
     //printf("remaining bitsize:%7d\n", bss);
-    while (bss > 0) {
+    //while (bss > 0) {
+    for (int i = 0; i < dsize; ++i) {
         t = decoding_table[xx];
-        data[di++] = t.symbol;
-        printf("s = %d, x = %u, xx=%u, nbbits=%d\n", data[di - 1], xx + L, xx, t.nbbits);
-        printf("reading %d bits from stream: ", t.nbbits);
-        uint32_t kekw = read_bits_memstream(bs, t.nbbits);
-        print_uint32_t(kekw, t.nbbits);
-        printf(", plus reverse: ");
-        print_uint32_t(reverse_bits_uint32_t(kekw, t.nbbits), t.nbbits);
-        printf("\n");
-        xx = t.new_x + reverse_bits_uint32_t(kekw, t.nbbits);
+        data[i] = t.symbol;
+        // printf("s = %d, x = %u, xx=%u, nbbits=%d\n", data[i], xx + L, xx, t.nbbits);
+        // printf("reading %d bits from stream: ", t.nbbits);
+        // uint32_t kekw = read_bits_memstream(bs, t.nbbits);
+        // print_uint32_t(kekw, t.nbbits);
+        // printf(", plus reverse: ");
+        // print_uint32_t(reverse_bits_uint32_t(kekw, t.nbbits), t.nbbits);
+        // printf("\n");
+        // xx = t.new_x + reverse_bits_uint32_t(kekw, t.nbbits);
+        xx = t.new_x + reverse_bits_uint32_t(read_bits_memstream(bs, t.nbbits), t.nbbits);
         bss -= t.nbbits;
         //printf("remaining bitsize:%7d\n", bss);
     }
+    assert(bss == 0);
     return data;
 }
 
@@ -215,7 +219,7 @@ void quantize_occurences() {
 
     // Adjust quant values to sum exactly to QUANT_SIZE
     difference = L - quant_total;
-    printf("quant_total=%d, difference=%d\n", quant_total, difference);
+    // printf("quant_total=%d, difference=%d\n", quant_total, difference);
     while (difference > 0) {
         for (i = 0; i < ASIZE && difference > 0; i++) {
             if (quant[i] < (int)((float)occ[i] / total * L + 0.5)) {
@@ -236,7 +240,7 @@ void quantize_occurences() {
     for (int i = 0; i < ASIZE; ++i) {
         quant_sum += quant[i];
     }
-    printf("quant_sum: %d\n", quant_sum);
+    // printf("quant_sum: %d\n", quant_sum);
     for (i = 0; i < ASIZE; i++) {
         occ[i] = quant[i];
         //printf("Symbol %d: Quantized value = %d\n", i, quant[i]);
@@ -608,36 +612,36 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
         },
         .stream_capacity = 8192
     };
-    for (int i = 909; i < 920; ++i) {
-        printf("%3d ", diffs.data[i]);
-    }
+    // for (int i = 909; i < 920; ++i) {
+    //     printf("%3d ", diffs.data[i]);
+    // }
     int K = diffs.size;
-    printf("\n");
+    // printf("\n");
     uint32_t final_state = encode(diffs.data, K, &diff_writing_stream);
-    printf("final state: %u, diffs_size: %zu\n", final_state, diffs.size);
+    // printf("final state: %u, diffs_size: %zu\n", final_state, diffs.size);
     finalize_vecstream(&diff_writing_stream);
     size_t total_bytesize = (diff_writing_stream.ms.total_bitsize % 8 == 0)
                             ? (diff_writing_stream.ms.total_bitsize / 8)
                             : (diff_writing_stream.ms.total_bitsize / 8 + 1);
-    printf("vecstream finalized.\n");
-    printf("printing writing_stream byte-by-byte:\n");
-    for (int i = 0; i < total_bytesize; ++i) {
-        printf("[");
-        print_uint8_t(diff_writing_stream.ms.stream[i], 8);
-        printf("]");
-        if (i && (i % 10 == 0)) printf("\n");
-    }
-    printf("\n");
-    printf("printing reversed writing_stream byte-by-byte:\n");
+    // printf("vecstream finalized.\n");
+    // printf("printing writing_stream byte-by-byte:\n");
+    // for (int i = 0; i < total_bytesize; ++i) {
+    //     printf("[");
+    //     print_uint8_t(diff_writing_stream.ms.stream[i], 8);
+    //     printf("]");
+    //     if (i && (i % 10 == 0)) printf("\n");
+    // }
+    // printf("\n");
+    // printf("printing reversed writing_stream byte-by-byte:\n");
     reverse_bits_memstream(&(diff_writing_stream.ms));
-    for (int i = 0; i < total_bytesize; ++i) {
-        printf("[");
-        print_uint8_t(diff_writing_stream.ms.stream[i], 8);
-        printf("]");
-        if (i && (i % 10 == 0)) printf("\n");
-    }
-    printf("\n");
-    printf("dws current_bytesize=%zu, total_bytesize=%zu\n", diff_writing_stream.ms.current_bytesize, total_bytesize);
+    // for (int i = 0; i < total_bytesize; ++i) {
+    //     printf("[");
+    //     print_uint8_t(diff_writing_stream.ms.stream[i], 8);
+    //     printf("]");
+    //     if (i && (i % 10 == 0)) printf("\n");
+    // }
+    // printf("\n");
+    // printf("dws current_bytesize=%zu, total_bytesize=%zu\n", diff_writing_stream.ms.current_bytesize, total_bytesize);
     FILE *file = fopen(filename, "wb");
     if (!file) {
         perror("Failed to open file");
@@ -670,12 +674,12 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     for (int i = 1; i < ASIZE; ++i) {
         fwrite(&(chain_table[i - 1].res), sizeof(int8_t), 1, file);
     }
-    for (int i = 0; i < 10; ++i) {
-        printf("ct[%d].d64=%d, ct[%d].res=%d\n", i, chain_table[i].d64, i, chain_table[i].res);
-    }
-    printf("# of anchor samples: %zu\n", samples.size);
-    printf("# of diff samples: %zu\n", diffs.size);
-    printf("total bytesize: %zu, total bitsize: %zu\n", total_bytesize, diff_writing_stream.ms.total_bitsize);
+    // for (int i = 0; i < 10; ++i) {
+    //     printf("ct[%d].d64=%d, ct[%d].res=%d\n", i, chain_table[i].d64, i, chain_table[i].res);
+    // }
+    // printf("# of anchor samples: %zu\n", samples.size);
+    // printf("# of diff samples: %zu\n", diffs.size);
+    // printf("total bytesize: %zu, total bitsize: %zu\n", total_bytesize, diff_writing_stream.ms.total_bitsize);
     fwrite(&(samples.size), sizeof(size_t), 1, file);
     fwrite(samples.data, sizeof(uint16_t), samples.size, file);
     // saving diff would change result to simply choosing top occurence diffs (one of proposed improvements)
@@ -684,35 +688,35 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     fwrite(&(diff_writing_stream.ms.total_bitsize), sizeof(size_t), 1, file);
     fwrite(diff_writing_stream.ms.stream, sizeof(uint8_t), total_bytesize, file);
     fclose(file);
-    diff_writing_stream.ms.current_bytesize = 0;
-    diff_writing_stream.ms.bit_buffer = 0;
-    diff_writing_stream.ms.bits_in_buffer = 0;
-    size_t garbage_bitsize = (diff_writing_stream.ms.total_bitsize % 8 == 0) ? (0) : (8 - (diff_writing_stream.ms.total_bitsize % 8));
-    if (garbage_bitsize) {
-        printf("read %lu bits of garbage:\n", garbage_bitsize);
-        read_bits_memstream(&(diff_writing_stream.ms), garbage_bitsize);
-    }
-    uint8_t *diffs_recovered = decode(K, diff_writing_stream.ms.total_bitsize, final_state, &(diff_writing_stream.ms));
-    for (int i = 0; i < K / 2; ++i) {
-        uint8_t temp = diffs_recovered[i];
-        diffs_recovered[i] = diffs_recovered[K - i - 1];
-        diffs_recovered[K - i - 1] = temp;
-    }
-    int fi = -1;
-    for (int i = K - 1; i >= 0; --i) {
-        printf("od[%5d]=%3d -- rd[%5d]=%3d.", i, diffs.data[i], i, diffs_recovered[i]);
-        if (diffs.data[i] != diffs_recovered[i]) {
-            printf(" DIFFERENT!!!\n");
-            if (fi == -1) fi = K - i - 1;
-        } else {
-            printf("\n");
-        }
-    }
-    printf("first DIFF diverges at %d from end.\n", fi);
-    //for (int i = fi; i < fi + 15; ++i) {
+    // diff_writing_stream.ms.current_bytesize = 0;
+    // diff_writing_stream.ms.bit_buffer = 0;
+    // diff_writing_stream.ms.bits_in_buffer = 0;
+    // size_t garbage_bitsize = (diff_writing_stream.ms.total_bitsize % 8 == 0) ? (0) : (8 - (diff_writing_stream.ms.total_bitsize % 8));
+    // if (garbage_bitsize) {
+    //     // printf("read %lu bits of garbage:\n", garbage_bitsize);
+    //     read_bits_memstream(&(diff_writing_stream.ms), garbage_bitsize);
+    // }
+    // uint8_t *diffs_recovered = decode(K, diff_writing_stream.ms.total_bitsize, final_state, &(diff_writing_stream.ms));
+    // for (int i = 0; i < K / 2; ++i) {
+    //     uint8_t temp = diffs_recovered[i];
+    //     diffs_recovered[i] = diffs_recovered[K - i - 1];
+    //     diffs_recovered[K - i - 1] = temp;
+    // }
+    // int fi = -1;
+    // for (int i = 10; i >= 0; --i) {
+    //     printf("od[%5d]=%3d -- rd[%5d]=%3d.", i, diffs.data[i], i, diffs_recovered[i]);
+    //     if (diffs.data[i] != diffs_recovered[i]) {
+    //         printf(" DIFFERENT!!!\n");
+    //         if (fi == -1) fi = K - i - 1;
+    //     } else {
+    //         printf("\n");
+    //     }
+    // }
+    // printf("first DIFF diverges at %d from end.\n", fi);
+    // for (int i = fi; i < fi + 15; ++i) {
     //    printf("od[%5d]=%3d -- rd[%5d]=%3d\n", i, diffs.data[i], i, diffs_recovered[i]);
-    //}
-    free(diffs_recovered);
+    // }
+    // free(diffs_recovered);
     return;
 }
 

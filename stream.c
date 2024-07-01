@@ -11,6 +11,7 @@ void fill_buffer_bitstream(bitStream *bs) {
 }
 
 uint32_t read_bits_bitstream(bitStream *bs, int n) {
+    if (n == 0) return 0;
     if (bs->bits_in_buffer < n) fill_buffer_bitstream(bs);
     uint32_t result = (uint32_t)(bs->bit_buffer & (uint64_t)((1 << n) - 1));
     bs->bit_buffer >>= n;
@@ -28,6 +29,9 @@ void flush_buffer_memstream(memStream *ms) {
 
 // bits input:  last bits -> [{zero_padding}{higher}...{lower}] <- first bits
 void write_bits_memstream(memStream *ms, uint32_t bits, int n) {
+    if (n == 0) {
+        return;
+    }
     if (ms->bits_in_buffer + n > 64) {
         flush_buffer_memstream(ms);
     }
@@ -53,6 +57,7 @@ void fill_buffer_memstream(memStream *ms) {
 }
 
 uint32_t read_bits_memstream(memStream *ms, int n) {
+    if (n == 0) return 0;
     if (ms->bits_in_buffer < n) fill_buffer_memstream(ms);
     uint32_t result = (uint32_t)(ms->bit_buffer & (uint64_t)((1 << n) - 1));
     ms->bit_buffer >>= n;
@@ -77,6 +82,9 @@ void flush_buffer_vecstream(vecStream *vs) {
 
 // bits input:  last bits -> [{zero_padding}{higher}...{lower}] <- first bits
 void write_bits_vecstream(vecStream *vs, uint32_t bits, int n) {
+    if (n == 0) {
+        return;
+    }
     if (vs->ms.bits_in_buffer + n > 64) {
         flush_buffer_vecstream(vs);
     }

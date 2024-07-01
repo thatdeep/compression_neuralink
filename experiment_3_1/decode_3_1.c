@@ -3,8 +3,10 @@
 // #include <stdlib.h>
 // #include <stdint.h>
 // #include <string.h>
-#include <math.h>
+#include "assert.h"
+#include "math.h"
 
+#define DEBUG 1
 
 #define ASIZE 256
 #define R 12
@@ -158,18 +160,22 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs) {
     int32_t tbm = 0;
     int32_t kek_counter = 0;
     //printf("remaining bitsize:%7d\n", bss);
-    while (bss > 0) {
+    //while (bss > 0) {
+    for (int i = 0; i < dsize; ++i) {
         kek_counter++;
         t = decoding_table[xx];
-        data[di++] = t.symbol;
-        if (t.nbbits >= 32) printf("WARNING t.nbbits=%d!\n", t.nbbits);
+        data[i] = t.symbol;
+        if (t.nbbits >= 32) {
+            //printf("WARNING t.nbbits=%d!\n", t.nbbits);
+        }
         if (t.nbbits > tbm) tbm = t.nbbits;
         xx = t.new_x + reverse_bits_uint32_t(read_bits_memstream(bs, t.nbbits), t.nbbits);
         bss -= t.nbbits;
         //printf("bss:%d, xx:%u, di=%zu, sym=%d\n", bss, xx, di, data[di-1]);
         //printf("remaining bitsize:%7d\n", bss);
     }
-    printf("MAX t.nbbits=%d, kek_counter=%d\n", tbm, kek_counter);
+    assert(bss == 0);
+    //printf("MAX t.nbbits=%d, kek_counter=%d\n", tbm, kek_counter);
     return data;
 }
 
@@ -191,7 +197,7 @@ void quantize_occurences() {
 
     // Adjust quant values to sum exactly to QUANT_SIZE
     difference = L - quant_total;
-    printf("quant_total=%d, difference=%d\n", quant_total, difference);
+    //printf("quant_total=%d, difference=%d\n", quant_total, difference);
     while (difference > 0) {
         for (i = 0; i < ASIZE && difference > 0; i++) {
             if (quant[i] < (int)((float)occ[i] / total * L + 0.5)) {
@@ -212,7 +218,7 @@ void quantize_occurences() {
     for (int i = 0; i < ASIZE; ++i) {
         quant_sum += quant[i];
     }
-    printf("quant_sum: %d\n", quant_sum);
+    //printf("quant_sum: %d\n", quant_sum);
     for (i = 0; i < ASIZE; i++) {
         occ[i] = quant[i];
         //printf("Symbol %d: Quantized value = %d\n", i, quant[i]);
@@ -498,9 +504,9 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
     res_table[0] = 0;
     fread(d64_table + 1, sizeof(int8_t), (ASIZE - 1), file);
     fread(res_table + 1, sizeof(int8_t), (ASIZE - 1), file);
-    for (int i = 1; i < 10; ++i) {
-        printf("ct[%d].d64=%d, ct[%d].res=%d\n", i, d64_table[i], i, res_table[i]);
-    }
+    // for (int i = 1; i < 10; ++i) {
+    //     printf("ct[%d].d64=%d, ct[%d].res=%d\n", i, d64_table[i], i, res_table[i]);
+    // }
     fread(&samples_size, sizeof(size_t), 1, file);
     samples = (uint16_t *)malloc(sizeof(uint16_t) * samples_size);
     fread(samples, sizeof(uint16_t), samples_size, file);
@@ -526,11 +532,11 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
         .stream_capacity = read_total_bytesize
     };
     fread(diff_reading_stream.ms.stream, sizeof(uint8_t), read_total_bytesize, file);
-    printf("read_final_state: %u\n", final_state);
-    printf("read_total_bytesize:%zu, read_total_bitsize:%zu\n", read_total_bytesize, read_total_bitsize);
+    // printf("read_final_state: %u\n", final_state);
+    // printf("read_total_bytesize:%zu, read_total_bitsize:%zu\n", read_total_bytesize, read_total_bitsize);
     garbage_bitsize = (read_total_bitsize % 8 == 0) ? (0) : (8 - (read_total_bitsize % 8));
     if (garbage_bitsize) {
-        printf("read %lu bits of garbage:\n", garbage_bitsize);
+        // printf("read %lu bits of garbage:\n", garbage_bitsize);
         read_bits_memstream(&(diff_reading_stream.ms), garbage_bitsize);
     }
     uint8_t *diffs_recovered = decode(diffs_size, read_total_bitsize, final_state, &(diff_reading_stream.ms));
@@ -539,23 +545,23 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
         diffs_recovered[i] = diffs_recovered[diffs_size - i - 1];
         diffs_recovered[diffs_size - i - 1] = temp;
     }
-    printf("diffs size: %zu\n", diffs_size);
-    for (int i = 0; i < 50; ++i) {
-        printf("%3d ", diffs_recovered[i]);
-    }
-    for (int i = 0; i < diffs_size; ++i) {
-        if (diffs_recovered[i]) {
-            printf("first non-zero diff is at %d\n", i);
-            break;
-        }
-    }
-    printf("\n");
+    // printf("diffs size: %zu\n", diffs_size);
+    // for (int i = 0; i < 50; ++i) {
+    //     printf("%3d ", diffs_recovered[i]);
+    // }
+    // for (int i = 0; i < diffs_size; ++i) {
+    //     if (diffs_recovered[i]) {
+    //         printf("first non-zero diff is at %d\n", i);
+    //         break;
+    //     }
+    // }
+    // printf("\n");
     // restoration of initial samples
     *num_samples = diffs_size + 1;
     //UVector16 datavec = (UVector16){.size=0, .capacity=(size_t)(*num_samples), .data = (uint16_t *)malloc(sizeof(uint16_t) * (size_t)(*num_samples))};
     //push_uvector16(&datavec, samples[0]);
     size_t diff_index = 0, sample_index = 1;
-    printf("samples size: %zu, num_samples: %zu, diff_size: %zu\n", samples_size, *num_samples, diffs_size);
+    // printf("samples size: %zu, num_samples: %zu, diff_size: %zu\n", samples_size, *num_samples, diffs_size);
     uint16_t *udata = (uint16_t *)malloc(sizeof(uint16_t) * (size_t)(*num_samples));
     udata[0] = samples[0];
     for (int i = 1; i < (*num_samples); ++i) {
