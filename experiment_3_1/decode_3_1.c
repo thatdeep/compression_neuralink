@@ -117,6 +117,23 @@ void finalize_memstream(memStream *ms) {
     }
 }
 
+void fill_buffer_memstream(memStream *ms) {
+    size_t total_bytesize = (ms->total_bitsize % 8 == 0) ? (ms->total_bitsize / 8) : (ms->total_bitsize / 8 + 1);
+    while ((ms->bits_in_buffer <= 56) && (ms->current_bytesize < total_bytesize)) {
+        uint8_t next_byte = ms->stream[ms->current_bytesize++];
+        ms->bit_buffer |= ((uint64_t)next_byte << ms->bits_in_buffer);
+        ms->bits_in_buffer += 8;
+    }
+}
+
+uint32_t read_bits_memstream(memStream *ms, int n) {
+    if (ms->bits_in_buffer < n) fill_buffer_memstream(ms);
+    uint32_t result = (uint32_t)(ms->bit_buffer & (uint64_t)((1 << n) - 1));
+    ms->bit_buffer >>= n;
+    ms->bits_in_buffer -= n;
+    return result;
+}
+
 void flush_buffer_vecstream(vecStream *vs) {
     while (vs->ms.bits_in_buffer >= 8) {
         if (vs->ms.current_bytesize + 1 >= vs->stream_capacity) {
@@ -213,8 +230,8 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs) {
     for (size_t s = 0; s < ASIZE; ++s) {
         kdiff[s] = R - logfloor(occ[s]);
         nb[s] = (kdiff[s] << RSMALL) - (occ[s] << kdiff[s]);
-        sumacc += occ[s];
         start[s] = -occ[s] + sumacc;
+        sumacc += occ[s];
         next[s] = occ[s];
     }
     int s;
@@ -247,7 +264,7 @@ uint32_t reverse_bits_uint32_t(uint32_t x, int nbits) {
     return reversed;
 }
 
-uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
+uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs) {
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
     size_t di = 0;
     // spread
@@ -262,13 +279,13 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
     for (size_t s = 0; s < ASIZE; ++s) {
         next[s] = occ[s];
     }
-    for (size_t x = 0; x < L; ++x) {
+    for (size_t xd = 0; xd < L; ++xd) {
         tableEntry t;
-        t.symbol = symbol[x];
+        t.symbol = symbol[xd];
         uint32_t xx = next[t.symbol]++;
         t.nbbits = R - logfloor(xx);
         t.new_x = (xx << t.nbbits) - L;
-        decoding_table[x] = t;
+        decoding_table[xd] = t;
     }
     // decode
     uint32_t xx = x - L;
@@ -283,7 +300,7 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, bitStream *bs) {
         data[di++] = t.symbol;
         if (t.nbbits >= 32) printf("WARNING t.nbbits=%d!\n", t.nbbits);
         if (t.nbbits > tbm) tbm = t.nbbits;
-        xx = t.new_x + reverse_bits_uint32_t(read_bits_bitstream(bs, t.nbbits), t.nbbits);
+        xx = t.new_x + reverse_bits_uint32_t(read_bits_memstream(bs, t.nbbits), t.nbbits);
         bss -= t.nbbits;
         //printf("bss:%d, xx:%u, di=%zu, sym=%d\n", bss, xx, di, data[di-1]);
         //printf("remaining bitsize:%7d\n", bss);
@@ -491,7 +508,7 @@ void test_tans_algorithm() {
         printf("read %lu bits of garbage:\n", garbage_bitsize);
         read_bits_bitstream(&reading_stream, garbage_bitsize);
     }
-    uint8_t *recovered_text = decode(recovered_text_size, read_total_bitsize, decode_initial_state, &reading_stream);
+    uint8_t *recovered_text = decode(recovered_text_size, read_total_bitsize, decode_initial_state, (memStream *)(&reading_stream));
     for (int i = 0; i < recovered_text_size; ++i) {
         printf("%d --- %d\n", text[i], recovered_text[recovered_text_size - i - 1]);
     }
@@ -626,22 +643,33 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
     fread(&final_state, sizeof(uint32_t), 1, file);
     fread(&diffs_size, sizeof(size_t), 1, file);
     fread(&read_total_bitsize, sizeof(size_t), 1, file);
-    bitStream diff_reading_stream = (bitStream){
-        .bit_buffer = 0,
-        .bits_in_buffer = 0,
-        .current_bytesize = 0,
-        .total_bitsize = read_total_bitsize,
-        .stream = file
-    };
+    // bitStream diff_reading_stream = (bitStream){
+    //     .bit_buffer = 0,
+    //     .bits_in_buffer = 0,
+    //     .current_bytesize = 0,
+    //     .total_bitsize = read_total_bitsize,
+    //     .stream = file
+    // };
     read_total_bytesize = (read_total_bitsize % 8 == 0) ? (read_total_bitsize / 8) : (read_total_bitsize / 8 + 1);
+    vecStream diff_reading_stream = (vecStream){
+        .ms = (memStream){
+            .bit_buffer = 0,
+            .bits_in_buffer = 0,
+            .current_bytesize = 0,
+            .total_bitsize = read_total_bitsize,
+            .stream=(uint8_t *)malloc(sizeof(uint8_t) * read_total_bytesize)
+        },
+        .stream_capacity = read_total_bytesize
+    };
+    fread(diff_reading_stream.ms.stream, sizeof(uint8_t), read_total_bytesize, file);
     printf("read_final_state: %u\n", final_state);
     printf("read_total_bytesize:%zu, read_total_bitsize:%zu\n", read_total_bytesize, read_total_bitsize);
     garbage_bitsize = (read_total_bitsize % 8 == 0) ? (0) : (8 - (read_total_bitsize % 8));
     if (garbage_bitsize) {
         printf("read %lu bits of garbage:\n", garbage_bitsize);
-        read_bits_bitstream(&diff_reading_stream, garbage_bitsize);
+        read_bits_memstream(&(diff_reading_stream.ms), garbage_bitsize);
     }
-    uint8_t *diffs_recovered = decode(diffs_size, read_total_bitsize, final_state, &diff_reading_stream);
+    uint8_t *diffs_recovered = decode(diffs_size, read_total_bitsize, final_state, &(diff_reading_stream.ms));
     for (int i = 0; i < diffs_size / 2; ++i) {
         uint8_t temp = diffs_recovered[i];
         diffs_recovered[i] = diffs_recovered[diffs_size - i - 1];
@@ -665,6 +693,7 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
     size_t diff_index = 0, sample_index = 1;
     printf("samples size: %zu, num_samples: %zu, diff_size: %zu\n", samples_size, *num_samples, diffs_size);
     uint16_t *udata = (uint16_t *)malloc(sizeof(uint16_t) * (size_t)(*num_samples));
+    udata[0] = samples[0];
     for (int i = 1; i < (*num_samples); ++i) {
         uint8_t diff_char = diffs_recovered[diff_index++];
         if (diff_char == 0) {
@@ -714,8 +743,8 @@ void write_wav_file(const char *filename, int16_t *data, int num_samples) {
 }
 
 int main(int argc, char **argv) {
-    test_write_read_streams();
-    test_tans_algorithm();
+    //test_write_read_streams();
+    //test_tans_algorithm();
     if (argc < 3) {
         printf("Usage: %s <compressed-file> <output-wav-file>\n", argv[0]);
         return 1;
