@@ -1,9 +1,6 @@
 #include "../stream.h"
 #include "../vector.h"
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <stdint.h>
-// #include <string.h>
+#include "../wavio.h"
 #include "assert.h"
 #include "math.h"
 
@@ -249,6 +246,16 @@ void quantize_occurences() {
     return;
 }
 
+
+double kl_divergence_factor(int32_t *p_occ, int32_t *q_occ, int p_total, int q_total, int n) {
+    double result = 0.0;
+    for (int i = 0; i < n; ++i) {
+        result += (double)p_occ[i] * log((double)(p_occ[i]) * q_total /  (double)q_occ[i] / p_total) / p_total;
+    }
+    return result;
+}
+
+
 void test_write_read_streams() {
     int bitsizes[15] = {1, 3, 7, 15, 2, 30, 8, 2, 3, 5, 29, 15, 4, 3, 2};
     uint32_t bits[15] = {0xF, 0x2, 0x4, 0xA, 0x1, 0xFFA, 0x6, 0x1, 0x3, 0x5, 0x1C, 0xB, 0x2, 0x1, 0x3};
@@ -409,24 +416,6 @@ void test_tans_algorithm() {
     free(writing_stream.ms.stream);
 }
 
-
-#pragma pack(1) // Ensure no padding
-typedef struct {
-    char chunkID[4];
-    unsigned int chunkSize;
-    char format[4];
-    char subchunk1ID[4];
-    unsigned int subchunk1Size;
-    unsigned short audioFormat;
-    unsigned short numChannels;
-    unsigned int sampleRate;
-    unsigned int byteRate;
-    unsigned short blockAlign;
-    unsigned short bitsPerSample;
-    char subchunk2ID[4];
-    unsigned int subchunk2Size;
-} WAVHeader;
-
 typedef struct {
      int key;
      int stack_index;
@@ -438,34 +427,6 @@ typedef struct {
 
 static TableEntry sample_table[SAMPLE_TABLE_SIZE];
 static uint16_t sample_stack[SAMPLE_TABLE_SIZE];
-
-
-uint16_t *read_wav_file(const char *filename, WAVHeader *header, size_t *num_samples) {
-    FILE *file = fopen(filename, "rb");
-    if (!file) {
-        printf("Failed to open file '%s'\n", filename);
-        exit(1);
-    }
-
-    //WAVHeader header;
-    fread(header, sizeof(WAVHeader), 1, file);
-
-    *num_samples = header->subchunk2Size / (header->bitsPerSample / 8);
-    int16_t *data = (int16_t *) malloc((*num_samples) * sizeof(int16_t));
-    if (!data) {
-        printf("Failed to allocate memory\n");
-        fclose(file);
-        exit(1);
-    }
-
-    fread(data, header->bitsPerSample / 8, *num_samples, file);
-    uint16_t *udata = (uint16_t *)data;
-    for (int i = 0; i < *num_samples; ++i) {
-        udata[i] += 32768;
-    }
-    fclose(file);
-    return udata;
-}
 
 typedef struct {
     uint32_t count;
@@ -528,7 +489,7 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
             occ[0]++;
         }
     }
-    quantize_occurences(); // honestly, just send serialize quantized occurences, plus we use it at encode
+    quantize_occurences(); // honestly, just send and serialize quantized occurences, plus we use it at encode
     vecStream diff_writing_stream = (vecStream){
         .ms = (memStream){
             .bit_buffer = 0,

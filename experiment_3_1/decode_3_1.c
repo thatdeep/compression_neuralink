@@ -1,9 +1,6 @@
+#include "../wavio.h"
 #include "../stream.h"
 #include "../vector.h"
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <stdint.h>
-// #include <string.h>
 #include "assert.h"
 #include "math.h"
 
@@ -387,24 +384,6 @@ void test_tans_algorithm() {
     free(writing_stream.ms.stream);
 }
 
-
-#pragma pack(1) // Ensure no padding
-typedef struct {
-    char chunkID[4];
-    unsigned int chunkSize;
-    char format[4];
-    char subchunk1ID[4];
-    unsigned int subchunk1Size;
-    unsigned short audioFormat;
-    unsigned short numChannels;
-    unsigned int sampleRate;
-    unsigned int byteRate;
-    unsigned short blockAlign;
-    unsigned short bitsPerSample;
-    char subchunk2ID[4];
-    unsigned int subchunk2Size;
-} WAVHeader;
-
 typedef struct {
      int key;
      int stack_index;
@@ -507,36 +486,6 @@ void read_compressed_file(const char *filename, int16_t **data, size_t *num_samp
     }
     fclose(file);
     return;
-}
-
-void write_wav_file(const char *filename, int16_t *data, int num_samples) {
-    WAVHeader header;
-    int num_channels = 1;
-    int sample_rate = 19531;
-    int bits_per_sample = 16;
-    memcpy(header.chunkID, "RIFF", 4);
-    header.chunkSize = 36 + num_samples * sizeof(int16_t);
-    memcpy(header.format, "WAVE", 4);
-    memcpy(header.subchunk1ID, "fmt ", 4);
-    header.subchunk1Size = 16;
-    header.audioFormat = 1; // PCM
-    header.numChannels = num_channels;
-    header.sampleRate = sample_rate;
-    header.byteRate = sample_rate * num_channels * bits_per_sample / 8;
-    header.blockAlign = num_channels * bits_per_sample / 8;
-    header.bitsPerSample = bits_per_sample;
-    memcpy(header.subchunk2ID, "data", 4);
-    header.subchunk2Size = num_samples * sizeof(int16_t);
-
-    FILE *file = fopen(filename, "wb");
-    if (!file) {
-        printf("Failed to open file '%s'\n", filename);
-        exit(1);
-    }
-    fwrite(&header, sizeof(WAVHeader), 1, file);
-    fwrite(data, sizeof(int16_t), num_samples, file);
-
-    fclose(file);
 }
 
 int main(int argc, char **argv) {
