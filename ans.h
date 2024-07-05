@@ -34,7 +34,7 @@ double kl_divergence_factor(int32_t *p_occ, int32_t *q_occ, int p_total, int q_t
 
 int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow);
 
-uint8_t *spread_fast(int32_t *occ, int alphabet_size, int quant_size);
+uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
 
 uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow);
 

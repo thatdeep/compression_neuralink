@@ -22,10 +22,11 @@ int16_t *read_compressed_file(const char *filename, size_t *num_samples) {
     int32_t *occ = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
 
 
-    for (int i = 0; i < alphabet_size; ++i) {
-        fread(&temp16, sizeof(uint16_t), 1, file);
-        occ[i] = (int32_t)temp16;
-    }
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     fread(&temp16, sizeof(uint16_t), 1, file);
+    //     occ[i] = (int32_t)temp16;
+    // }
+    fread(occ, sizeof(int32_t), alphabet_size, file);
     d64_table = (int8_t *)malloc(sizeof(int8_t) * alphabet_size);
     res_table = (int8_t *)malloc(sizeof(int8_t) * alphabet_size);
     d64_table[0] = 0;

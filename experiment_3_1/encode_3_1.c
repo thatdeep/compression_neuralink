@@ -42,7 +42,7 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
         }
     }
     qsort(chain_table, 303, sizeof(ChainElemInfo), compare_chain_element_infos);
-    memset(occ, 0, sizeof(int32_t) * ASIZE);
+    //memset(occ, 0, sizeof(int32_t) * ASIZE);
     for (int i = 0; i < ASIZE - 1; ++i) { // first symbol states end of chain
         int d64 = chain_table[i].d64;
         int res = chain_table[i].res;
@@ -71,7 +71,6 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
             occ[0]++;
         }
     }
-    int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow); // honestly, just send and serialize quantized occurences, plus we use it at encode
     vecStream diff_writing_stream = (vecStream){
         .ms = (memStream){
             .bit_buffer = 0,
@@ -83,7 +82,7 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
         .stream_capacity = 8192
     };
     int K = diffs.size;
-    uint32_t final_state = encode(diffs.data, K, &diff_writing_stream, quant_occ, alphabet_size, quant_pow);
+    uint32_t final_state = encode(diffs.data, K, &diff_writing_stream, occ, alphabet_size, quant_pow);
     finalize_vecstream(&diff_writing_stream);
     size_t total_bytesize = (diff_writing_stream.ms.total_bitsize % 8 == 0)
                             ? (diff_writing_stream.ms.total_bitsize / 8)
@@ -98,7 +97,7 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     // * encoded diff alphabet:
     // int alphabet_size
     // int quant_pow (TODO remove it if we dont plan to search optimal quantization)
-    // uint16 quant_occ[ASIZE]
+    // uint32_t occ[ASIZE]
     // int8 d64[ASIZE - 1] (d64 has no meaning for our END_OF_CHAIN symbol 0)
     // int8 res[ASIZE - 1] (res has no meaning for our END_OF_CHAIN symbol 1) - can be compressed via vecstream/memstream to 2-bit
     // * anchors (samples)
@@ -110,14 +109,15 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     // content of reversed diff_writing_stream
     fwrite(&alphabet_size, sizeof(int), 1, file);
     fwrite(&quant_pow, sizeof(int), 1, file);
-    for (int i = 0; i < ASIZE; ++i) {
-        uint16_t quant_occ_value = (uint16_t)quant_occ[i];
-        fwrite(&quant_occ_value, sizeof(uint16_t), 1, file);
-    }
-    for (int i = 1; i < ASIZE; ++i) {
+    fwrite(occ, sizeof(int32_t), alphabet_size, file);
+    // for (int i = 0; i < ASIZE; ++i) {
+    //     uint16_t quant_occ_value = (uint16_t)quant_occ[i];
+    //     fwrite(&quant_occ_value, sizeof(uint16_t), 1, file);
+    // }
+    for (int i = 1; i < alphabet_size; ++i) {
         fwrite(&(chain_table[i - 1].d64), sizeof(int8_t), 1, file);
     }
-    for (int i = 1; i < ASIZE; ++i) {
+    for (int i = 1; i < alphabet_size; ++i) {
         fwrite(&(chain_table[i - 1].res), sizeof(int8_t), 1, file);
     }
     fwrite(&(samples.size), sizeof(size_t), 1, file);
@@ -129,7 +129,6 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     fwrite(diff_writing_stream.ms.stream, sizeof(uint8_t), total_bytesize, file);
     fclose(file);
     free(occ);
-    free(quant_occ);
     free(diff_writing_stream.ms.stream);
     free(samples.data);
     free(diffs.data);

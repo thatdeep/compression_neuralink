@@ -95,7 +95,7 @@ int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow) {
     return quant_occ;
 }
 
-uint8_t *spread_fast(int32_t *occ, int alphabet_size, int quant_size) {
+uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size) {
     int32_t xind = 0;
     size_t bitsize = 0;
     int spread_step = ((quant_size * 5 / 8) + 3);
@@ -103,7 +103,7 @@ uint8_t *spread_fast(int32_t *occ, int alphabet_size, int quant_size) {
 
 
     for (size_t s = 0; s < alphabet_size; ++s) {
-        for (uint32_t i = 0; i < occ[s]; ++i) {
+        for (uint32_t i = 0; i < quant_occ[s]; ++i) {
             symbol[xind] = s;
             xind = (xind + spread_step) % quant_size;
         }
@@ -120,20 +120,20 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int al
     int32_t *start = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
     uint8_t *kdiff = (uint8_t *)malloc(sizeof(uint8_t) * alphabet_size);
     uint32_t *encoding_table = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
-
+    int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
 
     uint8_t nbbits;
     size_t bitsize = 0;
     // spread
-    uint8_t *symbol = spread_fast(occ, alphabet_size, quant_size);
+    uint8_t *symbol = spread_fast(occ, quant_occ, alphabet_size, quant_size);
     // prepare
     int sumacc = 0;
     for (size_t s = 0; s < alphabet_size; ++s) {
-        kdiff[s] = quant_pow - logfloor(occ[s]);
-        nb[s] = (kdiff[s] << r_small) - (occ[s] << kdiff[s]);
-        start[s] = -occ[s] + sumacc;
-        sumacc += occ[s];
-        next[s] = occ[s];
+        kdiff[s] = quant_pow - logfloor(quant_occ[s]);
+        nb[s] = (kdiff[s] << r_small) - (quant_occ[s] << kdiff[s]);
+        start[s] = -quant_occ[s] + sumacc;
+        sumacc += quant_occ[s];
+        next[s] = quant_occ[s];
     }
     int s;
     for (int x = quant_size; x < 2 * quant_size; ++x) {
@@ -163,6 +163,8 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int al
     free(symbol);
     free(kdiff);
     free(encoding_table);
+    free(quant_occ);
+
     return x;
 }
 
@@ -173,13 +175,14 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
     int32_t *next = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
     tableEntry *decoding_table = (tableEntry *)malloc(sizeof(tableEntry) * quant_size);
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
+    int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
 
     size_t di = 0;
     // spread
-    uint8_t *symbol = spread_fast(occ, alphabet_size, quant_size);
+    uint8_t *symbol = spread_fast(occ, quant_occ, alphabet_size, quant_size);
     // prepare
     for (size_t s = 0; s < alphabet_size; ++s) {
-        next[s] = occ[s];
+        next[s] = quant_occ[s];
     }
     for (size_t xd = 0; xd < quant_size; ++xd) {
         tableEntry t;
@@ -212,5 +215,6 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
     free(next);
     free(symbol);
     free(decoding_table);
+    free(quant_occ);
     return data;
 }
