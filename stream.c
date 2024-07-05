@@ -1,5 +1,23 @@
 #include "stream.h"
 
+void print_uint64_t_bits(uint64_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & ((uint64_t)1 << i)) == ((uint64_t)1 << i)) ? 1 : 0);
+    }
+}
+
+void print_uint32_t_bits(uint32_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & ((uint32_t)1 << i)) == ((uint32_t)1 << i)) ? 1 : 0);
+    }
+}
+
+void print_uint8_t_bits(uint8_t bbuf, int nbits) {
+    for (int i = nbits - 1; i >= 0; --i) {
+        printf("%d", ((bbuf & (1 << i)) == (1 << i)) ? 1 : 0);
+    }
+}
+
 void fill_buffer_bitstream(bitStream *bs) {
     size_t total_bytesize = (bs->total_bitsize % 8 == 0) ? (bs->total_bitsize / 8) : (bs->total_bitsize / 8 + 1);
     while ((bs->bits_in_buffer <= 56) && (bs->current_bytesize < total_bytesize)) {
@@ -119,4 +137,15 @@ void reverse_bits_memstream(memStream *ms) {
         ms->stream[i] = temp;
     }
     return;
+}
+
+void free_memstream(memStream *ms) {
+    if (ms->stream) {
+        free(ms->stream);
+        ms->stream = NULL;
+    }
+}
+
+void free_vecstream(vecStream *vs) {
+    free_memstream(&(vs->ms));
 }
