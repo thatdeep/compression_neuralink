@@ -66,16 +66,24 @@ int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow) {
     // Adjust quant values to sum exactly to QUANT_SIZE
     difference = quant_size - quant_total;
     // printf("quant_total=%d, difference=%d\n", quant_total, difference);
+    int prev_difference = difference;
     while (difference > 0) {
+        prev_difference = difference;
+        //printf("difference: %d\n", difference);
         for (i = 0; i < alphabet_size && difference > 0; i++) {
             if (quant_occ[i] < (int)((float)occ[i] / total * quant_size + 0.5)) {
                 quant_occ[i]++;
                 difference--;
             }
         }
+        if (prev_difference == difference) {
+            quant_occ[0]++;
+            difference--;
+        }
     }
     while (difference < 0) {
         for (i = 0; i < alphabet_size && difference < 0; i++) {
+            //printf("difference2: %d\n", difference);
             if (quant_occ[i] > 1) {
                 quant_occ[i]--;
                 difference++;
@@ -120,8 +128,9 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int al
     int32_t *start = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
     uint8_t *kdiff = (uint8_t *)malloc(sizeof(uint8_t) * alphabet_size);
     uint32_t *encoding_table = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
+    //printf("quantize:...\n");
     int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
-
+    //printf("quantize done\n");
     uint8_t nbbits;
     size_t bitsize = 0;
     // spread
@@ -175,7 +184,9 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
     int32_t *next = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
     tableEntry *decoding_table = (tableEntry *)malloc(sizeof(tableEntry) * quant_size);
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
+    //printf("quantize:...\n");
     int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
+    //printf("quantize done\n");
 
     size_t di = 0;
     // spread
