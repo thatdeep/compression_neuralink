@@ -7,36 +7,31 @@
 #include <string.h>
 #include <assert.h>
 
-typedef enum {
-	MIN_HEAP,
-	MAX_HEAP
-} HeapType;
+typedef int (*HeapKeyCompareFunc)(void *a, void *b);
 
 typedef struct {
-     int key;
-     void *data;
+    void *key;
+    void *data;
 } HeapEntry;
 
 typedef struct {
-     size_t size;
-     size_t capacity;
-     HeapEntry *data;
-     HeapType type;
+    size_t size;
+    size_t capacity;
+    HeapEntry *data;
+    HeapKeyCompareFunc key_compare;
 } Heap;
 
-static int key_compare(Heap *heap, int a, int b);
+void swim_heap(Heap *heap, int index);
 
-void swim(Heap *heap, int index);
+void sink_heap(Heap *heap, int index);
 
-void sink(Heap *heap, int index);
+void *pop_heap(Heap *heap);
 
-void *pop(Heap *heap);
+void push_heap(Heap *heap, void *key, void *data);
 
-void push(Heap *heap, int key, void *data);
+void *find_extreme_key_heap(Heap *heap);
 
-int find_extreme_key(Heap *heap);
-
-void print_heap(Heap *heap, void (*print_data_function)(void *));
+void print_heap(Heap *heap, void (*print_key_function)(void *), void (*print_data_function)(void *));
 
 
 #endif // HEAP_H
