@@ -7,6 +7,7 @@
 #include <math.h>
 #include <assert.h>
 #include "stream.h"
+#include "heap.h"
 
 #define ASIZE 256
 #define R 12
@@ -32,6 +33,8 @@ uint32_t reverse_bits_uint32_t(uint32_t x, int nbits);
 double kl_divergence_factor(int32_t *p_occ, int32_t *q_occ, int p_total, int q_total, int n);
 
 int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow);
+
+uint8_t *spread_fast(int32_t *occ, int alphabet_size, int quant_size);
 
 uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow);
 
