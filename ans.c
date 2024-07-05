@@ -1,5 +1,9 @@
 #include "ans.h"
 
+int reversed_double_compare(void *a, void *b) {
+    return (*(double *)a > *(double *)b) - (*(double *)a < *(double *)b);
+}
+
 unsigned int nextPowerOf2(uint32_t n) {
     if (n == 0)
         return 1;
@@ -45,8 +49,7 @@ double kl_divergence_factor(int32_t *p_occ, int32_t *q_occ, int p_total, int q_t
     return result;
 }
 
-int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow) {
-    int quant_size = 1 << quant_pow;
+int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_size) {
     int total = 0;
     int quant_total = 0;
     int i, difference;
@@ -103,6 +106,93 @@ int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow) {
     return quant_occ;
 }
 
+int32_t *quantize_occurences_precise(int32_t *occ, int alphabet_size, int quant_size) {
+    int total = 0;
+    int quant_total = 0;
+    int i, difference;
+    int32_t *quant_occ = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
+    for (int i = 0; i < alphabet_size; ++i) {
+        total += occ[i];
+    }
+    double *prob = (double *)malloc(sizeof(double) * alphabet_size);
+    double *probn = (double *)malloc(sizeof(double) * alphabet_size);
+    double *probr = (double *)malloc(sizeof(double) * alphabet_size);
+    double *cost = (double *)malloc(sizeof(double) * alphabet_size);
+    uint8_t *nnz_mask = (uint8_t *)malloc(sizeof(uint8_t) * alphabet_size);
+    int32_t *arange = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
+    // I dont care about occ[i] = 0, let them be 0 in quant as well
+    int used = 0;
+    for (int i = 0; i < alphabet_size; ++i) {
+        arange[i] = i;
+        if (occ[i] > 0) {
+            nnz_mask[i] = 1;
+            prob[i] = 1.0 * occ[i] / total;
+            probn[i] = prob[i] * quant_size;
+            quant_occ[i] = (int32_t)round(probn[i]);
+            if (quant_occ[i] == 0) quant_occ[i] = 1;
+            probr[i] = 1.0 / prob[i];
+            cost[i] = (probn[i] - quant_occ[i]) * (probn[i] - quant_occ[i]) * probr[i];
+            used += quant_occ[i];
+        } else {
+            nnz_mask[i] = 0;
+            prob[i] = 0;
+            probn[i] = 0;
+            quant_occ[i] = 0;
+            probr[i] = 0;
+            quant_occ[i] = 0;
+            cost[i] = 0;
+        }
+    }
+    double *upd_cost = (double *)malloc(sizeof(double) * alphabet_size);
+    for (int i = 0; i < alphabet_size; ++i) {
+        upd_cost[i] = 0.0;//cost[i];
+    }
+    if (used != quant_size) {
+        int sgn = 1;
+        if (used > quant_size) sgn = -1;
+        Heap heap = (Heap) {
+            .size = 0,
+            .capacity = alphabet_size,
+            .data = (HeapEntry *)malloc(sizeof(HeapEntry) * alphabet_size),
+            .key_compare = reversed_double_compare
+        };
+        for (int i = 0; i < alphabet_size; ++i) {
+            if (!nnz_mask[i]) continue; // skip occ[i] == 0
+            if (quant_occ[i] + sgn) {
+                upd_cost[i] = ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
+                //printf("pushing %f at index %d to heap\n", upd_cost[i], i);
+                push_heap(&heap, (void *)(upd_cost + i), (void *)(arange + i));
+            }
+        }
+        for (; used != quant_size; used += sgn) {
+            double *upd_ref = (double *)find_extreme_key_heap(&heap);
+            int *i_ref = (int *)pop_heap(&heap);
+            int i = *i_ref;
+            cost[i] -= *(upd_ref);
+            quant_occ[i] += sgn;
+            if (quant_occ[i] + sgn) {
+                *(upd_ref) = ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
+                //printf("rushing %f(%f) at index %d to heap\n", upd_cost[i], *upd_ref, i);
+                push_heap(&heap, (void *)upd_ref, (void *)i_ref);
+            }
+        }
+        free(heap.data);
+    }
+
+    free(prob);
+    free(probn);
+    free(probr);
+    free(cost);
+    free(upd_cost);
+    free(arange);
+    free(nnz_mask);
+    // printf("quant occ:\n");
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     printf("%d: o: %d, q: %d\n", i, occ[i], quant_occ[i]);
+    // }
+    return quant_occ;
+}
+
 uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size) {
     int32_t xind = 0;
     size_t bitsize = 0;
@@ -129,7 +219,7 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int al
     uint8_t *kdiff = (uint8_t *)malloc(sizeof(uint8_t) * alphabet_size);
     uint32_t *encoding_table = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
     //printf("quantize:...\n");
-    int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
+    int32_t *quant_occ = quantize_occurences_precise(occ, alphabet_size, quant_size);
     //printf("quantize done\n");
     uint8_t nbbits;
     size_t bitsize = 0;
@@ -185,7 +275,7 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
     tableEntry *decoding_table = (tableEntry *)malloc(sizeof(tableEntry) * quant_size);
     uint8_t *data = (uint8_t *)malloc(sizeof(uint8_t) * dsize);
     //printf("quantize:...\n");
-    int32_t *quant_occ = quantize_occurences(occ, alphabet_size, quant_pow);
+    int32_t *quant_occ = quantize_occurences_precise(occ, alphabet_size, quant_size);
     //printf("quantize done\n");
 
     size_t di = 0;

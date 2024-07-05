@@ -22,6 +22,8 @@ typedef struct {
     uint8_t nbbits;
 } tableEntry;
 
+int reversed_double_compare(void *a, void *b);
+
 unsigned int nextPowerOf2(uint32_t n);
 
 uint8_t powerOfTwoExponent(uint32_t x);

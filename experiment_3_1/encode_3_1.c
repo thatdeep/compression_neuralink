@@ -19,13 +19,12 @@ int compare_chain_element_infos(const void *a, const void *b) {
 
 static const int d64_bound = 50;
 static const int res_bound = 31;
-static const int d64_range = 2 * 50 + 1;
-static const int res_range = 2 * 31 + 1;
+static const int d64_range = 2 * d64_bound + 1;
+static const int res_range = 2 * res_bound + 1;
 static ChainElemInfo chain_table[res_range * d64_range];
 static uint8_t chain_elem_to_alphabet[res_range * d64_range];
 
 void write_compressed_file(const char *filename, uint16_t *data, int num_samples) {
-    // TODO IF ALPHABET_SIZE IS A VARIABLE THEN WRITE IT TO THE FILE
     int alphabet_size = ASIZE;
     int quant_pow = R;
     int32_t *occ = (int32_t *)malloc(sizeof(int32_t) * alphabet_size);
@@ -45,9 +44,11 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
             chain_table[(d64 + d64_bound) * res_range + (res + res_bound)].count++;
         }
     }
+    // TODO THINK ABOUT CAPPING ALPHABET SIZE AT THIS POINT TO INCLUDE ONLY NON-ZERO OCC. WHY DO YOU EVEN NEED CODES FOR 0-PROBABILITY SYMBOLS?
+    // THIS MESSES WITH FAST QUANTIZATION, WILL SEE IF IT WILL CRIPPLE PRECISE QUANTIZATION
     qsort(chain_table, res_range * d64_range, sizeof(ChainElemInfo), compare_chain_element_infos);
     //memset(occ, 0, sizeof(int32_t) * ASIZE);
-    for (int i = 0; i < ASIZE - 1; ++i) { // first symbol states end of chain
+    for (int i = 0; i < alphabet_size - 1; ++i) { // first symbol states end of chain
         int d64 = chain_table[i].d64;
         int res = chain_table[i].res;
         chain_elem_to_alphabet[(d64 + d64_bound) * res_range + (res + res_bound)] = i + 1;
