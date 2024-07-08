@@ -8,7 +8,7 @@ int reversed_int32_t_compare(const void *a, const void *b) {
     return (int)((*(int32_t *)a < *(int32_t *)b) - (*(int32_t *)a > *(int32_t *)b));
 }
 
-int direct_then_reversed_dummy_double_int_pair_compare(void *a, void *b) {
+int reversed_then_direct_dummy_double_int_pair_compare(void *a, void *b) {
     DummyDoubleIntPair *a_pair = (DummyDoubleIntPair *)a;
     DummyDoubleIntPair *b_pair = (DummyDoubleIntPair *)b;
     if (a_pair->x > b_pair->x) return -1;
@@ -170,7 +170,7 @@ int32_t *quantize_occurences_precise(int32_t *occ, int alphabet_size, int quant_
             .size = 0,
             .capacity = alphabet_size,
             .data = (HeapEntry *)malloc(sizeof(HeapEntry) * alphabet_size),
-            .key_compare = direct_then_reversed_dummy_double_int_pair_compare
+            .key_compare = reversed_then_direct_dummy_double_int_pair_compare
         };
         for (int i = 0; i < alphabet_size; ++i) {
             if (!nnz_mask[i]) continue; // skip occ[i] == 0
