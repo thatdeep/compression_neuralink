@@ -1,7 +1,21 @@
 #include "ans.h"
 
-int reversed_double_compare(void *a, void *b) {
-    return (*(double *)a > *(double *)b) - (*(double *)a < *(double *)b);
+int reversed_double_compare(const void *a, const void *b) {
+    return (*(double *)a < *(double *)b) - (*(double *)a > *(double *)b);
+}
+
+int reversed_int32_t_compare(const void *a, const void *b) {
+    return (int)((*(int32_t *)a < *(int32_t *)b) - (*(int32_t *)a > *(int32_t *)b));
+}
+
+int direct_then_reversed_dummy_double_int_pair_compare(void *a, void *b) {
+    DummyDoubleIntPair *a_pair = (DummyDoubleIntPair *)a;
+    DummyDoubleIntPair *b_pair = (DummyDoubleIntPair *)b;
+    if (a_pair->x > b_pair->x) return -1;
+    if (a_pair->x < b_pair->x) return 1;
+    if (a_pair->y > b_pair->y) return 1;
+    if (a_pair->y < b_pair->y) return -1;
+    return 0;
 }
 
 unsigned int nextPowerOf2(uint32_t n) {
@@ -143,9 +157,11 @@ int32_t *quantize_occurences_precise(int32_t *occ, int alphabet_size, int quant_
             cost[i] = 0;
         }
     }
-    double *upd_cost = (double *)malloc(sizeof(double) * alphabet_size);
+    // double *upd_cost = (double *)malloc(sizeof(double) * alphabet_size);
+    DummyDoubleIntPair *ranged_upd_cost = (DummyDoubleIntPair *)malloc(sizeof(DummyDoubleIntPair) * alphabet_size);
     for (int i = 0; i < alphabet_size; ++i) {
-        upd_cost[i] = 0.0;//cost[i];
+        ranged_upd_cost[i].x = 0.0;//cost[i];
+        ranged_upd_cost[i].y = i;
     }
     if (used != quant_size) {
         int sgn = 1;
@@ -154,36 +170,59 @@ int32_t *quantize_occurences_precise(int32_t *occ, int alphabet_size, int quant_
             .size = 0,
             .capacity = alphabet_size,
             .data = (HeapEntry *)malloc(sizeof(HeapEntry) * alphabet_size),
-            .key_compare = reversed_double_compare
+            .key_compare = direct_then_reversed_dummy_double_int_pair_compare
         };
         for (int i = 0; i < alphabet_size; ++i) {
             if (!nnz_mask[i]) continue; // skip occ[i] == 0
             if (quant_occ[i] + sgn) {
-                upd_cost[i] = ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
+                ranged_upd_cost[i].x = cost[i] - ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
                 //printf("pushing %f at index %d to heap\n", upd_cost[i], i);
-                push_heap(&heap, (void *)(upd_cost + i), (void *)(arange + i));
+                push_heap(&heap, (void *)(ranged_upd_cost + i), (void *)NULL);
             }
         }
         for (; used != quant_size; used += sgn) {
-            double *upd_ref = (double *)find_extreme_key_heap(&heap);
-            int *i_ref = (int *)pop_heap(&heap);
+            DummyDoubleIntPair *dummy_upd_ref_pair = (DummyDoubleIntPair *)find_extreme_key_heap(&heap);
+            double *upd_ref = &(dummy_upd_ref_pair->x);
+            int *i_ref = &(dummy_upd_ref_pair->y);
+            pop_heap(&heap);
             int i = *i_ref;
             cost[i] -= *(upd_ref);
             quant_occ[i] += sgn;
             if (quant_occ[i] + sgn) {
-                *(upd_ref) = ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
+                *(upd_ref) = cost[i] - ((probn[i] - (quant_occ[i] + sgn)) * (probn[i] - (quant_occ[i] + sgn)) * probr[i]);
                 //printf("rushing %f(%f) at index %d to heap\n", upd_cost[i], *upd_ref, i);
-                push_heap(&heap, (void *)upd_ref, (void *)i_ref);
+                push_heap(&heap, (void *)dummy_upd_ref_pair, (void *)NULL);
             }
         }
         free(heap.data);
+    }
+    // to maintain quant_occ order we can sort quant_occ inside of each class of equivalence with i~j <=> occ[i] = occ[j]
+    for (int eq_start = 0; eq_start < alphabet_size;) {
+        int eq_end = eq_start;
+        while (eq_end < alphabet_size && occ[eq_start] == occ[eq_end]) {
+            eq_end++; // determine ending of equivalence class
+        }
+        if (eq_end - eq_start > 1) {
+            qsort(quant_occ + eq_start, eq_end - eq_start, sizeof(int32_t), reversed_int32_t_compare);
+        }
+        eq_start = eq_end;
+    }
+    // printf("quant occ:\n");
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     printf("%d: o: %d, q: %d\n", i, occ[i], quant_occ[i]);
+    // }
+    // kind of a debug print, quant_occ should be sorted as a result of an algorithm
+    for (int i = 0; i < alphabet_size - 1; ++i) assert(occ[i] >= occ[i + 1]);
+    for (int i = 0; i < alphabet_size - 1; ++i) {
+        if (quant_occ[i] < quant_occ[i + 1]) printf("q[%d]=%d, q[%d]=%d. Assertion will fail\n", i, quant_occ[i], i + 1, quant_occ[i + 1]);
+        assert(quant_occ[i] >= quant_occ[i + 1]);
     }
 
     free(prob);
     free(probn);
     free(probr);
     free(cost);
-    free(upd_cost);
+    free(ranged_upd_cost);
     free(arange);
     free(nnz_mask);
     // printf("quant occ:\n");

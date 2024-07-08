@@ -22,7 +22,16 @@ typedef struct {
     uint8_t nbbits;
 } tableEntry;
 
-int reversed_double_compare(void *a, void *b);
+typedef struct {
+    double x;
+    int y;
+}   DummyDoubleIntPair;
+
+int reversed_double_compare(const void *a, const void *b);
+
+int reversed_int32_t_compare(const void *a, const void *b);
+
+int direct_then_reversed_dummy_double_int_pair_compare(void *a, void *b);
 
 unsigned int nextPowerOf2(uint32_t n);
 
