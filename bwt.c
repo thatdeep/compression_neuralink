@@ -78,13 +78,15 @@ int32_t *sort_cyclic_shifts(int32_t *s, int n, int alphabet_size) {
 
 uint32_t *bwt(uint32_t *s, int n, int alphabet_size, int *sentinel_index) {
     // thats how I see it: symbols 0 <= s[i], sentinel symbol will be -1 then for simplicity
+    // we then lift all symbols byt sentinel_bymbol value so it will become 0 and all ss[i] > 0, which guarantees sentinel property
     int sentinel_symbol = -1;
     int32_t *ss = (int32_t *)malloc(sizeof(int32_t) * (n + 1));
     // what about simply memsetting (assuming you are using s[i] with leading bit zero)
     for (int i = 0; i < n; ++i) {
+        assert(s[i] < alphabet_size);
         ss[i] = (int32_t)(s[i]) - sentinel_symbol;
     }
-    ss[n] = 0;//sentinel_symbol - sentinel_symbol;
+    ss[n] = 0; //sentinel_symbol - sentinel_symbol;
     int32_t *p = sort_cyclic_shifts(ss, n + 1, alphabet_size + 1);
     for (int i = 0; i < n + 1; ++i) {
         ss[i] += sentinel_symbol;
@@ -113,11 +115,16 @@ uint32_t *bwt_inverse(uint32_t *s, int n, int alphabet_size, int sentinel_index)
     int *alphabet_map = (int *)malloc(sizeof(int) * alphabet_size);
     int *alphabet_cnt = (int *)malloc(sizeof(int) * alphabet_size);
     int32_t *ranks = (int32_t *)malloc(sizeof(int32_t) * n);
+
     for (int i = 0; i < alphabet_size; ++i) {
         alphabet_cnt[i] = 0;
         alphabet_map[i] = -1;
     }
     for (int i = 0; i < n; ++i) {
+        if (s[i] >= alphabet_size) {
+            printf("s[%d]=%u\n", i, s[i]);
+            assert(s[i] < alphabet_size);
+        }
         ranks[i] = alphabet_cnt[s[i]]++;
     }
     int offset = 0;

@@ -53,3 +53,13 @@ Side notes:
 3) What about passing only nonzero frequency character frequencies? Most stuff will work as it should work for arbitraty alphabet size, and even custom stop-symbol index should work as we can simply deduce that there are no stop-symbols if their corresponding custom index is out of bounds for new alphabet size.
 
 P.S. 2) and 3) kinda gave few hundreds of comression rate, good. 1) should be considered fixed until some bug sample will appear (works OK on a provided dataset diffs). What I did is to ensure that I got ordering close to original code (direct dimwise < operator with a max-heap in original code. So in my min-heap implementation I should reverse < into >, and reverse indices operator again to match with different sorting order, which is lower->higher frequencides in original, higher->lower in my code.). This leads to a reverse comparison for cost part of a tuple, and usual comparison for index part of a tuple. Open question is why using > instead of < in indexing part of a tuple leads to few bytes different result. Algorithm should (in theory) work identical inside equivalence classes i~j <=> occ[i]=occ[j] up to post-processing with shuffling quant_occ[i] and quant_occ[j] inside classes.
+
+experiment 3.2:
+same setting as in experiment 3.1, but I preprocess initial data with BWT transform (damn, its kinda slow without recoding of unique samples because of large alphabet of 65536 used for uint16 samples). At decoding stage, I get BWT transformed string which I restore to initial one using sentinel_index written into file. Result are not good, on top of slow coding, I got 2.57 compression rate. Will think about what could go wrong here. Might that be because initial data already favours repeated data and/or some small-magnitude changes?
+
+experiment 3.3:
+same setting as in experiment 3.2, but I applied BWT to diffs encoded to alphabet and right before encoding them via entropy encoding. Got same result of 2.82 compression rate. Now that I think about it, I should have expected similar result int this case because my tANS algorithm cares only about raw probability of a symbol, that means it should technically have same compression for permuted data. I need to think about trying conditional probabilities to see if bwt-transformed have better compression rate or not.
+
+Side notes:
+Overall its good to have bwt in arsenal, but its better to analyze at every point of a pipeline, how it changes data statistics (esp. conditional one) and where can we exploit it.
+Also, sloppy and non-optimized code backfires already (I want eval.sh to take ten-ish seconds again), think how you can compress multiple passes over a data in bwt.c and lots of extra memory created. 
