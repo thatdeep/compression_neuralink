@@ -10,7 +10,7 @@ void test_bwt(const char* test_name, uint32_t *input, int n, int alphabet_size) 
     int failed = 0;
 
     for (int i = 0; i < n; ++i) {
-        printf("i=%d, input[%d]=[%x], decod[%d]=[%x]\n", i, i, input[i], i, inverse_result[i]);
+        //printf("i=%d, input[%d]=[%x], decod[%d]=[%x]\n", i, i, input[i], i, inverse_result[i]);
         if (input[i] != inverse_result[i]) {
             failed = 1;
         }
@@ -43,15 +43,23 @@ int main() {
     uint32_t input3[n3] = {0};
     int alphabet_size3 = 256;
 
-    srand(0);
+    srand(13);
 
     for (int i = 0; i < n3; i++) {
         input3[i] = ((rand() % alphabet_size3) + alphabet_size3) % alphabet_size3;
     }
     test_bwt("Test 3", input3, (int)n3, alphabet_size3);
 
+    const int n4 = 200000;
+    uint32_t input4[n4] = {0};
+    int alphabet_size4 = 65536;
 
+    srand(666);
 
+    for (int i = 0; i < n4; i++) {
+        input4[i] = ((rand() % alphabet_size4) + alphabet_size4) % alphabet_size4;
+    }
+    test_bwt("Test 4", input4, (int)n4, alphabet_size4);
 
     // Add more tests for different strings
 
