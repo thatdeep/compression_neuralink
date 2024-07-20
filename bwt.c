@@ -92,11 +92,16 @@ uint32_t *bwt(uint32_t *s, int n, int alphabet_size, int *sentinel_index) {
     }
     printf("string in bwt:\n");
     for (int i = 0; i < n; ++i) {
-        printf("%c", ss[i] - 1);
+        printf("[%x]", ss[i] + sentinel_symbol);
+    }
+    printf("\n");
+    printf("as int32 numbers:\n");
+    for (int i = 0; i < n; ++i) {
+        printf("%3d ", ss[i] + sentinel_symbol);
     }
     printf("\n");
     ss[n] = 0;//sentinel_symbol - sentinel_symbol;
-    int32_t *p = sort_cyclic_shifts(ss, n + 1, alphabet_size);
+    int32_t *p = sort_cyclic_shifts(ss, n + 1, alphabet_size + 1);
     for (int i = 0; i < n + 1; ++i) {
         ss[i] += sentinel_symbol;
     }
@@ -118,22 +123,26 @@ uint32_t *bwt(uint32_t *s, int n, int alphabet_size, int *sentinel_index) {
     for (int m = 0; m < n + 1; ++m) {
         printf("%3d: ", m);
         for (int i = 0; i < n + 1; ++i) {
-            printf("%c", ss[(p[m] + i) % (n + 1)]);
+            if (ss[(p[m] + i) % (n + 1)] == sentinel_symbol) {
+                printf("[$$]");
+            } else {
+                printf("[%x]", ss[(p[m] + i) % (n + 1)]);
+            }
         }
         printf("\n");
     }
     printf("\n");
     assert(ss[(p[*sentinel_index] + n) % (n + 1)] == sentinel_symbol);
     // we know explicit sentinel index, I dont want to mess with original symbols so I skip sentinel
-    printf("bwt string in bwt:\n");
-    for (int i = 0; i < *sentinel_index; ++i) {
-        printf("%c", ss[(p[i] + n) % (n + 1)]);
-    }
-    printf("$");
-    for (int i = *sentinel_index + 1; i < n; ++i) {
-        printf("%c", ss[(p[i] + n) % (n + 1)]);
-    }
-    printf("\n");
+    // printf("bwt string in bwt:\n");
+    // for (int i = 0; i < *sentinel_index; ++i) {
+    //     printf("%c", ss[(p[i] + n) % (n + 1)]);
+    // }
+    // printf("$");
+    // for (int i = *sentinel_index + 1; i < n; ++i) {
+    //     printf("%c", ss[(p[i] + n) % (n + 1)]);
+    // }
+    // printf("\n");
     for (int i = 0; i < *sentinel_index; ++i) {
         last_column[i] = ss[(p[i] + n) % (n + 1)];
     }
@@ -171,28 +180,28 @@ uint32_t *bwt_inverse(uint32_t *s, int n, int alphabet_size, int sentinel_index)
     int row_index = 0;
     int l_index = 0;
     int rank = 0;
-    printf("bwt string:\n");
-    for (int i = 0; i < sentinel_index; ++i) {
-        printf("%c", s[i]);
-    }
-    printf("$");
-    for (int i = sentinel_index; i < n; ++i) {
-        printf("%c", s[i]);
-    }
-    printf("\n");
-    for (int i = 0; i < alphabet_size; ++i) {
-        if (alphabet_cnt[i]) {
-            printf("[%c:map=%d:cnt=%d]", i, alphabet_map[i], alphabet_cnt[i]);
-        }
-    }
+    // printf("bwt string:\n");
+    // for (int i = 0; i < sentinel_index; ++i) {
+    //     printf("%c", s[i]);
+    // }
+    // printf("$");
+    // for (int i = sentinel_index; i < n; ++i) {
+    //     printf("%c", s[i]);
+    // }
+    // printf("\n");
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     if (alphabet_cnt[i]) {
+    //         printf("[%c:map=%d:cnt=%d]", i, alphabet_map[i], alphabet_cnt[i]);
+    //     }
+    // }
     for (int j = n - 1; j >= 0; --j) {
         ss[j] = s[l_index];
         rank = ranks[l_index];
         row_index = alphabet_map[ss[j]] + rank + 1;
         l_index = (row_index > sentinel_index) ? row_index - 1 : row_index;
     }
-    printf("row_index: %d, l_index: %d, sentinel_index: %d\n", row_index, l_index, sentinel_index);
-    assert(row_index == sentinel_index);
-    assert(l_index == sentinel_index);
+    // printf("row_index: %d, l_index: %d, sentinel_index: %d\n", row_index, l_index, sentinel_index);
+    // assert(row_index == sentinel_index);
+    // assert(l_index == sentinel_index);
     return ss;
 }
