@@ -25,6 +25,32 @@ static const int res_range = 2 * res_bound + 1;
 static ChainElemInfo chain_table[res_range * d64_range];
 static int chain_elem_to_alphabet[res_range * d64_range];
 
+void write_diffs_freq_stat(const char *filename, const char *row_name, uint32_t *frequencies, int freq_size) {
+    FILE *file = fopen(filename, "a");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+    // Check if the file is empty
+    fseek(file, 0, SEEK_END);
+    long filesize = ftell(file);
+    if (filesize == 0) {
+        fprintf(file, "filename");
+        for (int i = 0; i < freq_size; ++i) {
+            fprintf(file, ",%d", i);    
+        }
+        fprintf(file, "\n");
+    }
+    // Write filename and frequencies to file
+    fprintf(file, "%s", row_name);
+    for (int i = 0; i < freq_size; ++i) {
+        fprintf(file, ",%d", frequencies[i]);
+    }
+    fprintf(file, "\n");
+    fclose(file);
+    return;
+}
+
 void write_compressed_file(const char *filename, uint16_t *data, int num_samples) {
     uint32_t *udata_32 = (uint32_t *)malloc(sizeof(uint32_t) * num_samples);
     for (int i = 0; i < num_samples; ++i) {
@@ -37,6 +63,45 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
     }
     free(udata_32);
     free(udata_32_bwt);
+
+    char raw_data_rle_freq_csv[] = "outputs/raw_data_rle_freq.csv";
+    char bwt_data_rle_freq_csv[] = "outputs/bwt_data_rle_freq.csv";
+    const int freq_size = 256;
+    uint32_t frequencies[freq_size] = {0};
+    uint16_t prev1 = data[0];
+    uint32_t cnt = 1;
+    for (int i = 1; i < num_samples; ++i) {
+        if (data[i] == prev1) {
+            cnt++;
+            if (cnt == 256) {
+                frequencies[cnt - 1]++;
+                cnt = 1;
+            }
+        } else {
+            frequencies[cnt]++;
+            cnt = 1;
+            prev1 = data[i];
+        }
+    }
+    write_diffs_freq_stat(raw_data_rle_freq_csv, filename, frequencies, freq_size);
+
+    memset(frequencies, 0, sizeof(uint32_t) * freq_size);
+    uint32_t prev2 = udata_32_bwt[0];
+    cnt = 1;
+    for (int i = 1; i < num_samples; ++i) {
+        if (udata_32_bwt[i] == prev2) {
+            cnt++;
+            if (cnt == 256) {
+                frequencies[cnt - 1]++;
+                cnt = 1;
+            }
+        } else {
+            frequencies[cnt]++;
+            cnt = 1;
+            prev2 = udata_32_bwt[i];
+        }
+    }
+    write_diffs_freq_stat(bwt_data_rle_freq_csv, filename, frequencies, freq_size);
 
     int alphabet_size = ASIZE;
     int quant_pow = R;

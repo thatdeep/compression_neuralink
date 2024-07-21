@@ -84,4 +84,6 @@ In terms of alphabet, 256 pairs of (multiple 64, residue) force most of the elem
 #### Side Notes
 
 Overall it's good to have BWT in the arsenal, but it's better to analyze at every point of a pipeline how it changes data statistics (especially conditional ones) and where we can exploit it.
-Also, sloppy and non-optimized code is already backfiring (I want `eval.sh` to take ten-ish seconds again). Think about how you can
+Also, sloppy and non-optimized code is already backfiring (I want `eval.sh` to take ten-ish seconds again). Think about how you can compress multiple passes over a data in bwt.c and lots of extra memory created.
+
+**P.S.** ran experiments 3.2 and 3.3 with logging duplicated characters frequencies before and after bwt for initial data (3.2) and for diffs data (3.3). Duplicates are rare (like, 5-10k), and bwt doesnt make it look better. Wonder if it will cause any improvements in this challenge at all. MFE encoding might change things but I doubt it a bit at this point. I think I should return to an idea of expanding entropy coder dictionary through adding ocnditional probabilities (bigram alphabet). I think about doing same top-k probable bigrams selection, and filling rest of symbols with my usual diff table. This will lead to controllable table size (top-k from bigrams and up-to-256 from single diff multipliers).
