@@ -107,3 +107,18 @@ This time I decouple signs from data values, effectively reducing alphabet 2 tim
 **Result** 2.58 compression ratio. Getting closer to my previous diff-based experiments. It seems that decoupling structured parts of data works well, even if data itself is just a bunch of codes that are resembling initial values a bit (same linear order at least).
 
 **Notes** What I am thinking of now, is can we extract enough structure from code diffs if codes inherited linear order of intial data? Remember, in original datapoints we basically explicitly jumped around artificially placed mul64 spaces and residuals that were a result of 10b/16b coding. Would be great to beat top compression rate using much simplier codes diffs (they are basically natural numbers).
+
+### Experiment 4.3
+
+Started as a joke, ended as a sota xd. I was tempted to see (potential) power of simplified diff codes in terms of compressability (well, they have quite small theoretical entropy compared to initial samples).
+
+**Process**
+Well, look at this pipeline:
+* decouple signs from values as in experiment 4.2
+* encode values into static 0..511 codes as in experiment 4.2
+* as values can only take 0..511 values, so their diffs can only take -511..511 values, conviniently occupying first 1023 symbols of a 1024-symbol alphabet. Remember first sample code, encode all subsequent diffs into 0..1023 codes by simply adding 511 to their -511..511 codes.
+* encode 1023-symbol diff alphabet with tANS algorithm, encode sign changes binary array with tANS algorithm and their coresponding metadata needed to decode samples from. Decoding are basically all these steps reversed.
+
+**Result** 3.06 compression ratio on eval.sh. Looks solid, and beats previous experiment by a substantial margin. Feels refreshing.
+
+**Notes** I probably need a raw diff encoding experiment without signs decoupling to see if alphabet reduction actually came in clutch here. For that, I need to construct ~2048-sized diff alphabet and see how far entropy encoder can push it in terms of compression rate. Also, thinking about previous experiments, its interesting to see if signs decoupling and (possibly) reduction in samples alphabet could improve previous 2.82-2.83 compression results on raw values. Anyways, good to see a progress here. Goodnight :)
