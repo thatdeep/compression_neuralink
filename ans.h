@@ -17,15 +17,28 @@
 #define BUFSIZE 1000000
 
 typedef struct {
+    int32_t value;
+    int32_t index;
+} indexedOccurrence;
+
+typedef struct {
     uint32_t new_x;
     uint8_t symbol;
     uint8_t nbbits;
 } tableEntry;
 
 typedef struct {
+    uint32_t new_x;
+    uint16_t symbol;
+    uint8_t nbbits;
+} tableEntry16;
+
+typedef struct {
     double x;
     int y;
 }   DummyDoubleIntPair;
+
+int reversed_compare_indexed_occurrences(const void *a, const void *b);
 
 int reversed_double_compare(const void *a, const void *b);
 
@@ -43,9 +56,19 @@ uint32_t reverse_bits_uint32_t(uint32_t x, int nbits);
 
 double kl_divergence_factor(int32_t *p_occ, int32_t *q_occ, int p_total, int q_total, int n);
 
+int32_t *quantize_unsorted_occurences_precise(int32_t *occ, int alphabet_size, int quant_size);
+
+int32_t *quantize_occurences_precise(int32_t *occ, int alphabet_size, int quant_size);
+
 int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow);
 
+uint16_t *spread_fast16(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
+
 uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
+
+uint32_t encode16(uint16_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow);
+
+uint16_t *decode16(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t *occ, int alphabet_size, int quant_pow);
 
 uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow);
 

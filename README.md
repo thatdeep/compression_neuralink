@@ -86,4 +86,24 @@ In terms of alphabet, 256 pairs of (multiple 64, residue) force most of the elem
 Overall it's good to have BWT in the arsenal, but it's better to analyze at every point of a pipeline how it changes data statistics (especially conditional ones) and where we can exploit it.
 Also, sloppy and non-optimized code is already backfiring (I want `eval.sh` to take ten-ish seconds again). Think about how you can compress multiple passes over a data in bwt.c and lots of extra memory created.
 
-**P.S.** ran experiments 3.2 and 3.3 with logging duplicated characters frequencies before and after bwt for initial data (3.2) and for diffs data (3.3). Duplicates are rare (like, 5-10k), and bwt doesnt make it look better. Wonder if it will cause any improvements in this challenge at all. MFE encoding might change things but I doubt it a bit at this point. I think I should return to an idea of expanding entropy coder dictionary through adding ocnditional probabilities (bigram alphabet). I think about doing same top-k probable bigrams selection, and filling rest of symbols with my usual diff table. This will lead to controllable table size (top-k from bigrams and up-to-256 from single diff multipliers).
+**P.S.** ran experiments 3.2 and 3.3 with logging duplicated characters frequencies before and after bwt for initial data (3.2) and for diffs data (3.3). Duplicates are rare (like, 5-10k), and bwt doesnt make it look better. Wonder if it will cause any improvements in this challenge at all. MFE encoding might change things but I doubt it a bit at this point. I think I should return to an idea of expanding entropy coder dictionary through adding conditional probabilities (bigram alphabet). I think about doing same top-k probable bigrams selection, and filling rest of symbols with my usual diff table. This will lead to controllable table size (top-k from bigrams and up-to-256 from single diff multipliers).
+
+### Experiment 4.1
+
+Back to roots. Lets meditate at our data again. 10b of unique values coded into 16b words. Is there anymore redundancy (combinations of 10b codes meaning some low-bit code??). At least at this stage we can hardcode all 1024 values into our source code to not even bother wasting space in compressed files. Fine, now basically we have alphabet of 1024 symbols. Interestingly, all negative values, except exactly one -24568, have their symmetric pairs in a form value, -(value+1), example: -32, 31. Guess it better to actually consider 24567 as existing symbol anyway, though it isnt presentetd at all in public data. With this in mind, lets start straightforward and entropy code all codes (as we could have done anyway with original data) and see raw entropy coder performance on a data alone.
+
+**Process** Straightforward coding from values into numbers in [0..1023] range, then applying tANS entropy coder to data. Decode is same simple tANS decoder, following by table values from codes decoding.
+
+**Result** 2.41 compression rate. Thats how bad raw unique values are. Good news is that pipeline is cleanest and simpliest of all before.
+
+**Notes** values themselves have more structure. See, forgetting about signs, there are only 512 uniques (we can add 1 to negatives and take abs then, they will be sent to tieir positive counterpart). Moreover, signs themselves structured in a way that sign changes are quite rate. Thus, we can code sign changes instead of signs then apply entropy encoder (or RLE?) to this sequence as well to compress it. This leads to
+
+### Experiment 4.2
+
+This time I decouple signs from data values, effectively reducing alphabet 2 times, and have a compressable representations of sign changes.
+
+**Process:** Initially, data sign is positive. When reading values, decouple each value into a sign change bit and its positive pair member. Thus, obtaining text from alphabet [0..511] and binary string of 0's and 1's for sign changes. Then directly encode them separately with entropy encoders. Decoding is straightforward, decode value codes and sign changes, then decode back values according to sign change bits.
+
+**Result** 2.58 compression ratio. Getting closer to my previous diff-based experiments. It seems that decoupling structured parts of data works well, even if data itself is just a bunch of codes that are resembling initial values a bit (same linear order at least).
+
+**Notes** What I am thinking of now, is can we extract enough structure from code diffs if codes inherited linear order of intial data? Remember, in original datapoints we basically explicitly jumped around artificially placed mul64 spaces and residuals that were a result of 10b/16b coding. Would be great to beat top compression rate using much simplier codes diffs (they are basically natural numbers).
