@@ -110,7 +110,7 @@ This time I decouple signs from data values, effectively reducing alphabet 2 tim
 
 ### Experiment 4.3
 
-Started as a joke, ended as a sota xd. I was tempted to see (potential) power of simplified diff codes in terms of compressability (well, they have quite small theoretical entropy compared to initial samples).
+Started as a joke, ended as a (personal) sota xd. I was tempted to see (potential) power of simplified diff codes in terms of compressability (well, they have quite small theoretical entropy compared to initial samples).
 
 **Process**
 Well, look at this pipeline:
@@ -122,3 +122,13 @@ Well, look at this pipeline:
 **Result** 3.06 compression ratio on eval.sh. Looks solid, and beats previous experiment by a substantial margin. Feels refreshing.
 
 **Notes** I probably need a raw diff encoding experiment without signs decoupling to see if alphabet reduction actually came in clutch here. For that, I need to construct ~2048-sized diff alphabet and see how far entropy encoder can push it in terms of compression rate. Also, thinking about previous experiments, its interesting to see if signs decoupling and (possibly) reduction in samples alphabet could improve previous 2.82-2.83 compression results on raw values. Anyways, good to see a progress here. Goodnight :)
+
+### Experiment 4.4
+
+Before I go to bed, for fun, lets make occurence table for diffs less chunky. Current array is 1024 int32_t elements, but in most cases occ fits in uint16_t. So, lets serialize uint16_t and, if any overflow is occured, we store this overflow right after serialized array, with an assumption that if we encounter occ value 65535 in deserialization, we need to read uint16_t (or maybe int32_t? so program wont fail for arbitrary bad distributions) overflowed part. Also, lets increase quantization resolution for tANS algorithm from 4096 to, say, 16384.
+
+**Process** Same as experiment 4.3, but with micro-optimizations of stored values, that will save us around 2KB per file (actually a lot of space considering 700 compressed files are basically 50MB at this point).
+
+**Result** 3.16 with optimized occurence table, 3.17 with increased quantization resolution on top of it.
+
+**Notes** Well, actually, diff table can be very sparse (so we can probably juice it a little bit more). Anyways, good to have that kind of ratio jumps.
