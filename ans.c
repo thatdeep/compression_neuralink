@@ -296,6 +296,129 @@ uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int qu
     return symbol;
 }
 
+uint16_t *spread_tuned16(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size) {
+    // printf("xd\n");
+    uint16_t *s = (uint16_t *)malloc(sizeof(uint16_t *) * quant_size);
+    uint16_t *sym = (uint16_t *)malloc(sizeof(uint16_t *) * quant_size);
+    uint32_t *first = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
+    uint32_t *next = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
+    double *p = (double *)malloc(sizeof(double) * alphabet_size);
+    int32_t occ_total = 0;
+    for (int i = 0; i < alphabet_size; ++i) {
+        occ_total += occ[i];
+    }
+    for (int i = 0; i < alphabet_size; ++i) {
+        p[i] = (double)occ[i] / occ_total;
+    }
+    for (int i = 0; i < quant_size; ++i) {
+        first[i] = quant_size;
+        next[i] = quant_size;
+    }
+    int cp, pos = 0;
+    // printf("quant_size = %d\n", quant_size);
+    int total_iter = 0;
+    for (int sm = 0; sm < alphabet_size; ++sm) {
+        // if (quant_occ[sm] > 0) printf("iterating over symbol %d\n", sm);
+        for (int i = quant_occ[sm]; i < 2 * quant_occ[sm]; ++i) {
+            sym[pos] = sm;
+            int ins = (int)round(1 / (p[sm] * log(1 + 1 / (double)i)) - quant_size);
+            ins = MIN(MAX(ins, 0), quant_size - 1);
+            next[pos] = first[ins];
+            // printf("sm=%d, i=%d, ins=%d, cp=%d, pos=%d, sym[%d]=%d, next[%d]=%d, first[%d] = %d -> %d, pos -> %d\n", sm, i, ins, cp, pos, pos, sym[pos], pos, next[pos], ins, first[ins], pos, pos + 1);
+            first[ins] = pos++;
+            total_iter++;
+        }
+    }
+    // printf("total iterations = %d\n", total_iter);
+    // for (int i = 0; i < quant_size; ++i) {
+    //     printf("first[%d] = %d, next[%d] = %d\n", i, first[i], i, next[i]);
+    // }
+    cp = 0;
+    pos = first[0];
+    for (int i = 0; i < quant_size; ++i) {
+        // printf("i=%5d, [cp=%5d, pos=%5d] ->", i, cp, pos);
+        while (pos == quant_size) {
+            pos = first[++cp];
+        }
+        s[i] = sym[pos];
+        // printf("[cp=%5d, pos=%5d], s[%5d] = %5d, pos = %5d -> %5d\n", cp, pos, i, s[i], pos, next[pos]);
+        pos = next[pos];
+    }
+    free(sym);
+    free(first);
+    free(next);
+    free(p);
+    // printf("dd\n");
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     if (occ[i] > 0) printf("%d ", i);
+    // }
+    // printf("\n");
+    // for (int i = 0; i < quant_size; ++i) {
+    //     printf("i=%d, s=%hu\n", i, s[i]);
+    // }
+    return s;
+}
+
+uint8_t *spread_tuned(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size) {
+    uint8_t *s = (uint8_t *)malloc(sizeof(uint8_t *) * quant_size);
+    uint8_t *sym = (uint8_t *)malloc(sizeof(uint8_t *) * quant_size);
+    uint32_t *first = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
+    uint32_t *next = (uint32_t *)malloc(sizeof(uint32_t) * quant_size);
+    double *p = (double *)malloc(sizeof(double) * alphabet_size);
+    int32_t occ_total = 0;
+    for (int i = 0; i < alphabet_size; ++i) {
+        occ_total += occ[i];
+    }
+    for (int i = 0; i < alphabet_size; ++i) {
+        p[i] = (double)occ[i] / occ_total;
+    }
+    for (int i = 0; i < quant_size; ++i) {
+        first[i] = quant_size;
+        next[i] = quant_size;
+    }
+    int cp, pos = 0;
+    int total_iter = 0;
+    for (int sm = 0; sm < alphabet_size; ++sm) {
+        // if (quant_occ[sm] > 0) printf("iterating over symbol %d\n", sm);
+        for (int i = quant_occ[sm]; i < 2 * quant_occ[sm]; ++i) {
+            sym[pos] = sm;
+            int ins = (int)round(1 / (p[sm] * log(1 + 1 / (double)i)) - quant_size);
+            ins = MIN(MAX(ins, 0), quant_size - 1);
+            next[pos] = first[ins];
+            // printf("sm=%d, i=%d, ins=%d, cp=%d, pos=%d, sym[%d]=%d, next[%d]=%d, first[%d] = %d -> %d, pos -> %d\n", sm, i, ins, cp, pos, pos, sym[pos], pos, next[pos], ins, first[ins], pos, pos + 1);
+            first[ins] = pos++;
+            total_iter++;
+        }
+    }
+    // printf("total iterations = %d\n", total_iter);
+    // for (int i = 0; i < quant_size; ++i) {
+    //     printf("first[%d] = %d, next[%d] = %d\n", i, first[i], i, next[i]);
+    // }
+    cp = 0;
+    pos = first[0];
+    for (int i = 0; i < quant_size; ++i) {
+        // printf("i=%5d, [cp=%5d, pos=%5d] ->", i, cp, pos);
+        while (pos == quant_size) {
+            pos = first[++cp];
+        }
+        s[i] = sym[pos];
+        // printf("[cp=%5d, pos=%5d], s[%5d] = %5d, pos = %5d -> %5d\n", cp, pos, i, s[i], pos, next[pos]);
+        pos = next[pos];
+    }
+    // for (int i = 0; i < alphabet_size; ++i) {
+    //     if (occ[i] > 0) printf("%d ", i);
+    // }
+    // printf("\n");
+    // for (int i = 0; i < quant_size; ++i) {
+    //     printf("i=%d, s=%hu\n", i, s[i]);
+    // }
+    free(sym);
+    free(first);
+    free(next);
+    free(p);
+    return s;
+}
+
 uint32_t encode16(uint16_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow) {
     int r_small = quant_pow + 1;
     int quant_size = 1 << quant_pow;
@@ -311,7 +434,7 @@ uint32_t encode16(uint16_t *data, size_t dsize, vecStream *vs, int32_t *occ, int
     uint8_t nbbits;
     size_t bitsize = 0;
     // spread
-    uint16_t *symbol = spread_fast16(occ, quant_occ, alphabet_size, quant_size);
+    uint16_t *symbol = spread_tuned16(occ, quant_occ, alphabet_size, quant_size);
     // prepare
     int sumacc = 0;
     for (size_t s = 0; s < alphabet_size; ++s) {
@@ -367,7 +490,7 @@ uint16_t *decode16(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int3
 
     size_t di = 0;
     // spread
-    uint16_t *symbol = spread_fast16(occ, quant_occ, alphabet_size, quant_size);
+    uint16_t *symbol = spread_tuned16(occ, quant_occ, alphabet_size, quant_size);
 
     // prepare
     for (size_t s = 0; s < alphabet_size; ++s) {
@@ -399,6 +522,7 @@ uint16_t *decode16(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int3
         // printf("bss:%d, xx:%u, di=%zu, sym=%d\n", bss, xx, di, data[di-1]);
         // printf("remaining bitsize:%7d\n", bss);
     }
+    // printf("bss after decoding in decode16: %d\n", bss);
     assert(bss == 0);
     //printf("MAX t.nbbits=%d, kek_counter=%d\n", tbm, kek_counter);
     free(next);
@@ -423,7 +547,7 @@ uint32_t encode(uint8_t *data, size_t dsize, vecStream *vs, int32_t *occ, int al
     uint8_t nbbits;
     size_t bitsize = 0;
     // spread
-    uint8_t *symbol = spread_fast(occ, quant_occ, alphabet_size, quant_size);
+    uint8_t *symbol = spread_tuned(occ, quant_occ, alphabet_size, quant_size);
     // prepare
     int sumacc = 0;
     for (size_t s = 0; s < alphabet_size; ++s) {
@@ -479,7 +603,7 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
 
     size_t di = 0;
     // spread
-    uint8_t *symbol = spread_fast(occ, quant_occ, alphabet_size, quant_size);
+    uint8_t *symbol = spread_tuned(occ, quant_occ, alphabet_size, quant_size);
     // prepare
     for (size_t s = 0; s < alphabet_size; ++s) {
         next[s] = quant_occ[s];
@@ -510,6 +634,7 @@ uint8_t *decode(size_t dsize, size_t bitsize, uint32_t x, memStream *bs, int32_t
         //printf("bss:%d, xx:%u, di=%zu, sym=%d\n", bss, xx, di, data[di-1]);
         //printf("remaining bitsize:%7d\n", bss);
     }
+    // printf("bss after decoding in decode: %d\n", bss);
     assert(bss == 0);
     //printf("MAX t.nbbits=%d, kek_counter=%d\n", tbm, kek_counter);
     free(next);

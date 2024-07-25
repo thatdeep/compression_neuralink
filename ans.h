@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 #include <assert.h>
 #include "stream.h"
 #include "heap.h"
@@ -15,6 +16,16 @@
 #define L (1 << R)
 #define SPREADSTEP ((L * 5 / 8) + 3)
 #define BUFSIZE 1000000
+
+#define MAX(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define MIN(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
 
 typedef struct {
     int32_t value;
@@ -65,6 +76,10 @@ int32_t *quantize_occurences(int32_t *occ, int alphabet_size, int quant_pow);
 uint16_t *spread_fast16(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
 
 uint8_t *spread_fast(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
+
+uint8_t *spread_tuned(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
+
+uint16_t *spread_tuned16(int32_t *occ, int32_t *quant_occ, int alphabet_size, int quant_size);
 
 uint32_t encode16(uint16_t *data, size_t dsize, vecStream *vs, int32_t *occ, int alphabet_size, int quant_pow);
 

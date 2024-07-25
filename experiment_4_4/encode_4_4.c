@@ -86,6 +86,7 @@ void write_compressed_file(const char *filename, uint16_t *data, int num_samples
                             ? (diff_writing_stream.ms.total_bitsize / 8)
                             : (diff_writing_stream.ms.total_bitsize / 8 + 1);
     reverse_bits_memstream(&(diff_writing_stream.ms));
+    // printf("tANS statistics: input data size: %9d bytes, encoded data size: %9zu bytes, ratio: %f\n", (num_samples - 1) * 2, total_bytesize, 2.0 * (num_samples - 1) / total_bytesize);
     vecStream sign_writing_stream = (vecStream){
         .ms = (memStream){
             .bit_buffer = 0,

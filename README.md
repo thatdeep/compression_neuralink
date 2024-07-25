@@ -132,3 +132,9 @@ Before I go to bed, for fun, lets make occurence table for diffs less chunky. Cu
 **Result** 3.16 with optimized occurence table, 3.17 with increased quantization resolution on top of it.
 
 **Notes** Well, actually, diff table can be very sparse (so we can probably juice it a little bit more). Anyways, good to have that kind of ratio jumps.
+
+#### Side notes
+
+1. Implemented spread_tuned that should slightly improve tANS ratio.
+2. Found https://github.com/phoboslab/neuralink_brainwire/tree/master repo with whooping 3.35 ratio with sample-adaptive rice coding. Simple, fast, streamable and good. Want to push this further before trying to do any conditional shit.
+3. Started thinking about signal decoupling into functional part (something like running mean or first k fft coefficients polynomial) and its low-complexity representation, and into noise part. Main idea is to try to deduce functional part using as little data as possible, but tightening noise around zero to remove high-value outliers that increase entropy.
