@@ -138,3 +138,17 @@ Before I go to bed, for fun, lets make occurence table for diffs less chunky. Cu
 1. Implemented spread_tuned that should slightly improve tANS ratio.
 2. Found https://github.com/phoboslab/neuralink_brainwire/tree/master repo with whooping 3.35 ratio with sample-adaptive rice coding. Simple, fast, streamable and good. Want to push this further before trying to do any conditional shit.
 3. Started thinking about signal decoupling into functional part (something like running mean or first k fft coefficients polynomial) and its low-complexity representation, and into noise part. Main idea is to try to deduce functional part using as little data as possible, but tightening noise around zero to remove high-value outliers that increase entropy.
+
+### Experiment 4.5
+
+Reproduced https://github.com/phoboslab/neuralink_brainwire/tree/master results.
+
+**Process** Rice coding and adaptive rice coding where k changes based on lengths of previous codes using
+```
+rice_k = rice_k * 0.99 + (encoded_len / 1.55) * 0.01;
+```
+at each iteration.
+
+**Result** 3.30 compression rate with constant rice_k=3, and 3.34 compression rate with adaptive rice_k
+
+**Notes** I am thinking about playing around this and see if it can be pushed further while maintaining simple structure.
