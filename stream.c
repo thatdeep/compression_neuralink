@@ -53,16 +53,22 @@ void write_bits_memstream(memStream *ms, uint32_t bits, int n) {
     if (ms->bits_in_buffer + n > 64) {
         flush_buffer_memstream(ms);
     }
-    bits = (bits & (((uint32_t)1 << n) - 1));
+    bits = (bits & (((uint64_t)1 << n) - 1));
     ms->bit_buffer |= ((uint64_t)bits << ms->bits_in_buffer);
     ms->bits_in_buffer += n;
 }
 
-void finalize_memstream(memStream *ms) {
+size_t finalize_memstream(memStream *ms) {
     flush_buffer_memstream(ms);
+    size_t total_bitsize = ms->current_bytesize * 8;
     if (ms->bits_in_buffer > 0) {
         ms->stream[ms->current_bytesize++] = (uint8_t)(ms->bit_buffer & ((1 << ms->bits_in_buffer) - 1));
+        total_bitsize += ms->bits_in_buffer;
+        ms->bits_in_buffer = 0;
+        ms->bit_buffer = 0;
     }
+    ms->total_bitsize = total_bitsize;
+    return total_bitsize;
 }
 
 void fill_buffer_memstream(memStream *ms) {
@@ -77,9 +83,23 @@ void fill_buffer_memstream(memStream *ms) {
 uint32_t read_bits_memstream(memStream *ms, int n) {
     if (n == 0) return 0;
     if (ms->bits_in_buffer < n) fill_buffer_memstream(ms);
-    uint32_t result = (uint32_t)(ms->bit_buffer & (uint64_t)((1 << n) - 1));
+    uint32_t result = (uint32_t)(ms->bit_buffer & (uint64_t)(((uint64_t)1 << n) - 1));
     ms->bit_buffer >>= n;
     ms->bits_in_buffer -= n;
+    return result;
+}
+
+uint32_t show_bits_memstream(memStream *ms, int n) { // QoL function when we dont know how many bits we want to read yet because it depends on stream content
+    if (n == 0) return 0;
+    // printf("buf before show: ");
+    // print_uint64_t_bits(ms->bit_buffer, 64);
+    if (ms->bits_in_buffer < n) fill_buffer_memstream(ms);
+    // printf("\nbuf after show: ");
+    // print_uint64_t_bits(ms->bit_buffer, 64);
+    // printf("\n");
+    uint32_t result = (uint32_t)(ms->bit_buffer & (uint64_t)(((uint64_t)1 << n) - 1));
+    // print_uint32_t_bits(result, 32);
+    // printf("\n");
     return result;
 }
 
@@ -106,16 +126,22 @@ void write_bits_vecstream(vecStream *vs, uint32_t bits, int n) {
     if (vs->ms.bits_in_buffer + n > 64) {
         flush_buffer_vecstream(vs);
     }
-    bits = (bits & (((uint32_t)1 << n) - 1));
+    bits = (bits & (((uint64_t)1 << n) - 1));
     vs->ms.bit_buffer |= ((uint64_t)bits << vs->ms.bits_in_buffer);
     vs->ms.bits_in_buffer += n;
 }
 
-void finalize_vecstream(vecStream *vs) {
+size_t finalize_vecstream(vecStream *vs) {
     flush_buffer_vecstream(vs); // specifically guarantees that last byte will be allocated
+    size_t total_bitsize = vs->ms.current_bytesize * 8;
     if (vs->ms.bits_in_buffer > 0) {
         vs->ms.stream[vs->ms.current_bytesize++] = (uint8_t)(vs->ms.bit_buffer & ((1 << vs->ms.bits_in_buffer) - 1));
+        total_bitsize += vs->ms.bits_in_buffer;
+        vs->ms.bit_buffer = 0;
+        vs->ms.bits_in_buffer = 0;
     }
+    vs->ms.total_bitsize = total_bitsize;
+    return total_bitsize;
 }
 
 

@@ -42,16 +42,19 @@ void flush_buffer_memstream(memStream *ms);
 
 void write_bits_memstream(memStream *ms, uint32_t bits, int n);
 
-void finalize_memstream(memStream *ms);
+size_t finalize_memstream(memStream *ms);
 
 void fill_buffer_memstream(memStream *ms);
 
 uint32_t read_bits_memstream(memStream *ms, int n);
 
+uint32_t show_bits_memstream(memStream *ms, int n);
+
 void flush_buffer_vecstream(vecStream *vs);
+
 void write_bits_vecstream(vecStream *vs, uint32_t bits, int n);
 
-void finalize_vecstream(vecStream *vs);
+size_t finalize_vecstream(vecStream *vs);
 
 void reverse_bits_memstream(memStream *ms);
 
